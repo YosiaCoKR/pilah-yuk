@@ -32,6 +32,12 @@ export async function pasangPrasyaratSupabase(klien: PGlite) {
         select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
       $$;
     do $$ begin
+      /* Publikasi yang dibaca Realtime. Di Supabase sudah ada sejak proyek
+         dibuat; tanpa ini migrasi realtime akan terlewat diam-diam di
+         pemeriksaan, justru bagian yang paling perlu dibuktikan. */
+      if not exists (
+        select 1 from pg_publication where pubname = 'supabase_realtime'
+      ) then create publication supabase_realtime; end if;
       if not exists (select 1 from pg_roles where rolname = 'anon')
         then create role anon; end if;
       if not exists (select 1 from pg_roles where rolname = 'authenticated')

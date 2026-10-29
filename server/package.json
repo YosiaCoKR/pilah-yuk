@@ -12,7 +12,7 @@
     "db:check": "tsx src/db/schema.test.ts",
     "test:api": "tsx src/routes/alamat.test.ts",
     "test:slot": "tsx src/routes/slot-waktu.test.ts",
-    "test": "npm run db:check && npm run test:api && npm run test:slot && npm run test:pesanan && npm run test:langganan && npm run test:status && npm run test:jadwal && npm run test:pengingat && npm run test:riwayat && npm run test:rls",
+    "test": "npm run db:check && npm run test:api && npm run test:slot && npm run test:pesanan && npm run test:langganan && npm run test:status && npm run test:jadwal && npm run test:pengingat && npm run test:riwayat && npm run test:rls && npm run test:contoh && npm run test:channel",
     "test:pesanan": "tsx src/routes/pesanan.test.ts",
     "test:langganan": "tsx src/routes/langganan.test.ts",
     "db:seed": "bun run src/db/seed.ts",
@@ -20,7 +20,10 @@
     "test:jadwal": "tsx src/routes/jadwal.test.ts",
     "test:pengingat": "tsx src/pengingat.test.ts",
     "test:riwayat": "tsx src/routes/riwayat.test.ts",
-    "test:rls": "tsx src/db/rls.test.ts"
+    "test:rls": "tsx src/db/rls.test.ts",
+    "db:contoh": "bun run src/db/contoh.ts",
+    "test:contoh": "tsx src/db/contoh.test.ts",
+    "test:channel": "tsx src/routes/channel.test.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.6",

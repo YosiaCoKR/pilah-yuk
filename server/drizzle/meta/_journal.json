@@ -22,6 +22,34 @@
       "when": 1793250171557,
       "tag": "0002_pink_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793250171558,
+      "tag": "0003_realtime_penjemputan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793254974358,
+      "tag": "0004_channel_keanggotaan",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793255168056,
+      "tag": "0005_titik_alamat",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793255547558,
+      "tag": "0006_jadwal_pengumuman_channel",
+      "breakpoints": true
     }
   ]
 }

@@ -40,6 +40,12 @@ export const statusLangganan = pgEnum("status_langganan", [
   "menunggu_bayar",
 ]);
 
+/** `menunggu` = sudah mengajukan gabung, belum disetujui pengurus. */
+export const statusKeanggotaan = pgEnum("status_keanggotaan", [
+  "aktif",
+  "menunggu",
+]);
+
 export const statusPickup = pgEnum("status_pickup", [
   "menunggu",
   "dijemput",
@@ -83,8 +89,15 @@ export const rwChannels = pgTable(
     name: text("name").notNull(),
     rtNumber: text("rt_number"),
     rwNumber: text("rw_number"),
+    kelurahan: text("kelurahan"),
     areaCode: text("area_code").notNull(),
-    scheduleInfo: text("schedule_info"),
+    /* Titik balai RW, bukan batas wilayahnya — dipakai mengurutkan "channel
+       terdekat" dari alamat warga. Nullable: channel yang dibuat pengurus
+       sebelum titiknya ditandai tetap harus bisa dipakai, ia hanya jatuh ke
+       urutan paling bawah. Numeric, bukan PostGIS: yang ditanyakan selalu
+       "RW mana yang paling dekat", dan jarak lurus sudah menjawabnya. */
+    latitude: numeric("latitude", { precision: 9, scale: 6 }),
+    longitude: numeric("longitude", { precision: 9, scale: 6 }),
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -92,7 +105,185 @@ export const rwChannels = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("rw_channels_area_code_idx").on(t.areaCode)],
+  (t) => [
+    index("rw_channels_area_code_idx").on(t.areaCode),
+    check(
+      "rw_channels_titik_wajar",
+      /* `is not null` ditulis eksplisit: tanpa itu, lintang terisi + bujur
+         kosong membuat perbandingannya bernilai UNKNOWN, dan CHECK meloloskan
+         UNKNOWN. Titik setengah seperti itu tidak bisa dipakai menghitung
+         jarak, jadi channel-nya akan hilang dari daftar "terdekat" tanpa
+         sebab yang kelihatan. */
+      sql`(${t.latitude} is null and ${t.longitude} is null)
+          or (${t.latitude} is not null and ${t.longitude} is not null
+              and ${t.latitude} between -90 and 90
+              and ${t.longitude} between -180 and 180)`,
+    ),
+  ],
+);
+
+/**
+ * Keanggotaan warga di sebuah channel RT/RW.
+ *
+ * Yang bisa dihitung tidak disimpan: jumlah anggota, nama pengurus, dan
+ * "apakah aku anggota" semuanya dibaca dari tabel ini saat diminta. Menyimpan
+ * `member_count` di `rw_channels` berarti satu angka yang bisa melenceng dari
+ * daftar anggotanya sendiri — dan angka itulah yang dipakai warga menilai
+ * apakah channel-nya ramai.
+ *
+ * `is_pengurus` ada di sini, bukan di `users.role`: seseorang bisa pengurus di
+ * RW-nya sendiri dan warga biasa di channel RW sebelah tempat warungnya.
+ *
+ * Patokan rumah yang tampil di daftar anggota tidak ikut disimpan — ia dibaca
+ * dari alamat warga di channel ini, supaya tidak ada dua versi yang berbeda
+ * saat warga memperbarui alamatnya.
+ */
+export const channelMembers = pgTable(
+  "channel_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => rwChannels.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: statusKeanggotaan("status").notNull().default("menunggu"),
+    isPengurus: boolean("is_pengurus").notNull().default(false),
+    /* "Ketua RW 05", "Sekretaris RW 05". Ditulis di sini, bukan disalin ke
+       tiap pengumuman: kalau jabatannya salah ketik, yang harus dibetulkan
+       satu baris — bukan tiap pengumuman yang pernah ia tulis. */
+    jabatan: text("jabatan"),
+    /* Satu waktu untuk dua arti: kalau `menunggu`, ini kapan mengajukan;
+       kalau `aktif`, kapan diterima. Daftar anggota hanya menampilkan
+       umurnya, jadi dua kolom terpisah tidak pernah terbaca berbeda. */
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Satu warga satu keanggotaan per channel — mengajukan dua kali tidak
+    // boleh membuat dua baris menunggu yang harus disetujui dua kali.
+    uniqueIndex("channel_members_unik_idx").on(t.channelId, t.userId),
+    // Daftar anggota & antrean persetujuan pengurus: per channel, per status.
+    index("channel_members_channel_status_idx").on(t.channelId, t.status),
+    // "Channel apa saja yang aku ikuti" di layar daftar channel.
+    index("channel_members_user_idx").on(t.userId),
+    /*
+      RLS: warga membaca barisnya sendiri, dan daftar anggota channel yang
+      benar-benar ia ikuti.
+
+      `ikut_channel()` dipakai, bukan sub-query ke tabel ini: kebijakan di
+      channel_members yang menanyai channel_members akan berputar dan Postgres
+      menolaknya dengan galat rekursi. Fungsinya SECURITY DEFINER, jadi ia
+      melihat tabel tanpa lewat kebijakan ini lagi.
+
+      Hanya SELECT. Gabung dan persetujuan tetap lewat API — di sanalah
+      aturan "yang menyetujui harus pengurus" ditegakkan.
+    */
+    pgPolicy("channel_members_baca_sesama_anggota", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.userId} = ${authUid}
+        or ikut_channel(${t.channelId})`,
+    }),
+  ],
+);
+
+/**
+ * Jadwal angkut sebuah channel: hari-hari apa truknya lewat, di jam mana.
+ *
+ * Menggantikan `rw_channels.schedule_info` yang berupa satu kalimat bebas.
+ * Kalimat itu tidak bisa ditanyai "apakah besok hari angkut RW ini", jadi
+ * pengingat dan antrean petugas tidak punya apa pun untuk dipegang — dan
+ * begitu kalimatnya diperbarui tanpa jadwal sungguhan ikut berubah, warga
+ * membaca hari yang sudah tidak benar.
+ *
+ * Bentuknya meniru `recurring_schedules` milik warga: satu baris per slot jam
+ * dengan daftar harinya, bukan satu baris per hari. Satu channel biasanya
+ * hanya punya satu atau dua slot.
+ *
+ * Kalimat "Selasa & Jumat, 06.00–08.00" dirakit di layar, dengan perakit yang
+ * sudah dipakai jadwal rutin warga — supaya kata-katanya persis sama.
+ */
+export const channelSchedules = pgTable(
+  "channel_schedules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => rwChannels.id, { onDelete: "cascade" }),
+    timeSlotId: uuid("time_slot_id")
+      .notNull()
+      .references(() => timeSlots.id, { onDelete: "restrict" }),
+    /* 0 = Minggu, seperti `recurring_schedules.days` dan Date.getDay(). */
+    days: smallint("days").array().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Satu baris per slot jam: boleh angkut pagi DAN sore, tapi tidak boleh
+    // dua baris pagi yang saling menimpa.
+    uniqueIndex("channel_schedules_unik_idx").on(t.channelId, t.timeSlotId),
+    check(
+      "channel_schedules_hari_sah",
+      sql`${t.days} <@ array[0,1,2,3,4,5,6]::smallint[]
+          and cardinality(${t.days}) between 1 and 7`,
+    ),
+    /* Jadwal angkut RW bukan rahasia — warga perlu membacanya SEBELUM
+       memutuskan gabung. Karena itu seluruh pengguna yang sudah masuk boleh
+       membacanya, tidak hanya anggotanya. */
+    pgPolicy("channel_schedules_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
+  ],
+);
+
+/**
+ * Pengumuman pengurus di sebuah channel.
+ *
+ * `author_id` set null, bukan cascade: pengumuman jam angkut dan iuran masih
+ * dirujuk warga lama setelah ditulis, dan pengurus yang pindah rumah tidak
+ * boleh ikut menghapus arsip RT.
+ *
+ * Nama dan jabatan penulis tidak disalin ke sini — dibaca dari keanggotaannya,
+ * supaya tidak ada dua versi jabatan yang berbeda di dua pengumuman.
+ */
+export const channelPosts = pgTable(
+  "channel_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => rwChannels.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Daftar pengumuman satu channel, terbaru di atas.
+    index("channel_posts_channel_dibuat_idx").on(t.channelId, t.createdAt.desc()),
+    check("channel_posts_judul_terisi", sql`length(btrim(${t.title})) > 0`),
+    check("channel_posts_isi_terisi", sql`length(btrim(${t.content})) > 0`),
+    /* Hanya anggota aktif. Pengumuman menyebut alamat dan kebiasaan rumah
+       warga ("karung di pos ronda"), jadi ia bukan papan pengumuman umum. */
+    pgPolicy("channel_posts_baca_anggota", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`ikut_channel(${t.channelId})`,
+    }),
+  ],
 );
 
 /** Alamat jemput tersimpan milik warga. */
@@ -109,6 +300,12 @@ export const addresses = pgTable(
     rwChannelId: uuid("rw_channel_id").references(() => rwChannels.id, {
       onDelete: "set null",
     }),
+    /* Titik rumah. Pasangan dari titik balai RW di `rw_channels`: tanpa kedua
+       ujungnya, "channel terdekat" tidak bisa dihitung sama sekali. Nullable —
+       warga yang belum menandai rumahnya tetap bisa memesan jemput, daftar
+       channel-nya saja yang tidak terurut jarak. */
+    latitude: numeric("latitude", { precision: 9, scale: 6 }),
+    longitude: numeric("longitude", { precision: 9, scale: 6 }),
     isDefault: boolean("is_default").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -121,6 +318,15 @@ export const addresses = pgTable(
     uniqueIndex("addresses_satu_utama_idx")
       .on(t.userId)
       .where(sql`${t.isDefault}`),
+    /* Sama seperti rw_channels: titik setengah ditolak, bukan diloloskan
+       sebagai UNKNOWN. */
+    check(
+      "addresses_titik_wajar",
+      sql`(${t.latitude} is null and ${t.longitude} is null)
+          or (${t.latitude} is not null and ${t.longitude} is not null
+              and ${t.latitude} between -90 and 90
+              and ${t.longitude} between -180 and 180)`,
+    ),
   ],
 );
 
@@ -422,6 +628,11 @@ export type PickupItem = typeof pickupItems.$inferSelect;
 export type Address = typeof addresses.$inferSelect;
 export type WasteCategory = typeof wasteCategories.$inferSelect;
 export type RwChannel = typeof rwChannels.$inferSelect;
+export type ChannelMember = typeof channelMembers.$inferSelect;
+export type ChannelSchedule = typeof channelSchedules.$inferSelect;
+export type ChannelPost = typeof channelPosts.$inferSelect;
+export type ChannelPostBaru = typeof channelPosts.$inferInsert;
+export type ChannelMemberBaru = typeof channelMembers.$inferInsert;
 export type TimeSlot = typeof timeSlots.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;

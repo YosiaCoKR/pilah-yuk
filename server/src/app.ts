@@ -1,6 +1,7 @@
 import { Elysia, ElysiaCustomStatusResponse } from "elysia";
 import type { Db } from "./db";
 import { ruteAlamat } from "./routes/alamat";
+import { ruteChannel } from "./routes/channel";
 import { ruteJadwal } from "./routes/jadwal";
 import { ruteLangganan } from "./routes/langganan";
 import { rutePesanan } from "./routes/pesanan";
@@ -39,5 +40,5 @@ export function buatApp(db: Db) {
       return { pesan: "Ada gangguan di server. Coba lagi sebentar lagi." };
     })
     .get("/sehat", () => ({ status: "ok" }))
-    .group("/api", (app) => app.use(ruteAlamat(db)).use(ruteSlotWaktu(db)).use(rutePesanan(db)).use(ruteLangganan(db)).use(ruteJadwal(db)).use(ruteRiwayat(db)));
+    .group("/api", (app) => app.use(ruteAlamat(db)).use(ruteSlotWaktu(db)).use(rutePesanan(db)).use(ruteLangganan(db)).use(ruteJadwal(db)).use(ruteRiwayat(db)).use(ruteChannel(db)));
 }

@@ -47,6 +47,9 @@ const tabel = await db.query<{ table_name: string }>(
 const nama = tabel.rows.map((r) => r.table_name);
 assert.deepEqual(nama, [
   "addresses",
+  "channel_members",
+  "channel_posts",
+  "channel_schedules",
   "pickup_items",
   "pickups",
   "recurring_schedule_items",
@@ -358,6 +361,134 @@ assert.equal(
 );
 console.log("✓ hapus jadwal rutin tidak menghapus riwayat pesanannya");
 
+/* --- channel & keanggotaan --- */
+await db.query(
+  `insert into channel_members (channel_id, user_id, status) values ($1, $2, 'aktif')`,
+  [ch.rows[0].id, U],
+);
+await gagal(
+  db,
+  `insert into channel_members (channel_id, user_id) values ($1, $2)`,
+  [ch.rows[0].id, U],
+  "warga yang sama tidak boleh punya dua keanggotaan di satu channel",
+);
+const bentrokanDiam = await db.query<{ status: string; is_pengurus: boolean }>(
+  `insert into channel_members (channel_id, user_id)
+   values ($1, (select id from users where id = $2))
+   on conflict do nothing returning status, is_pengurus`,
+  [ch.rows[0].id, U],
+);
+assert.equal(bentrokanDiam.rows.length, 0, "bentrokan tidak menambah baris");
+
+/* Gabung menunggu persetujuan: baru lewat API statusnya jadi aktif. */
+const u2 = "33333333-3333-3333-3333-333333333333";
+await db.query(
+  `insert into users (id, full_name, phone) values ($1, 'Pak Agus', '0833')`,
+  [u2],
+);
+const anggotaBaru = await db.query<{ status: string; is_pengurus: boolean }>(
+  `insert into channel_members (channel_id, user_id) values ($1, $2)
+   returning status, is_pengurus`,
+  [ch.rows[0].id, u2],
+);
+assert.equal(anggotaBaru.rows[0].status, "menunggu", "gabung belum langsung aktif");
+assert.equal(anggotaBaru.rows[0].is_pengurus, false, "pengurus tidak diberikan diam-diam");
+console.log("  ✓ keanggotaan baru berstatus menunggu & bukan pengurus");
+
+await gagal(
+  db,
+  `insert into rw_channels (name, area_code, latitude, longitude)
+   values ('RW 99', '3573', 95, 0)`,
+  [],
+  "lintang di luar -90..90",
+);
+await gagal(
+  db,
+  `insert into rw_channels (name, area_code, latitude)
+   values ('RW 98', '3573', -7.25)`,
+  [],
+  "lintang tanpa bujur — titik setengah tidak bisa dipakai menghitung jarak",
+);
+
+/* Channel yang dihapus membawa keanggotaannya; warga yang hilang juga. */
+const chHapus = await db.query<{ id: string }>(
+  `insert into rw_channels (name, area_code) values ('RW 07', '3573') returning id`,
+);
+await db.query(
+  `insert into channel_members (channel_id, user_id) values ($1, $2)`,
+  [chHapus.rows[0].id, U],
+);
+await db.query(`delete from rw_channels where id = $1`, [chHapus.rows[0].id]);
+const sisaKeanggotaan = await db.query<{ n: number }>(
+  `select count(*)::int as n from channel_members where channel_id = $1`,
+  [chHapus.rows[0].id],
+);
+assert.equal(sisaKeanggotaan.rows[0].n, 0, "keanggotaan ikut terhapus bersama channel");
+console.log("  ✓ keanggotaan ikut terhapus bersama channel-nya");
+
+/* --- jadwal angkut & pengumuman channel --- */
+await db.query(
+  `insert into channel_schedules (channel_id, time_slot_id, days)
+   values ($1, $2, '{2,5}')`,
+  [ch.rows[0].id, slot.rows[0].id],
+);
+await gagal(
+  db,
+  `insert into channel_schedules (channel_id, time_slot_id, days)
+   values ($1, $2, '{2}')`,
+  [ch.rows[0].id, slot.rows[0].id],
+  "dua jadwal angkut kembar untuk slot jam yang sama",
+);
+await gagal(
+  db,
+  `insert into channel_schedules (channel_id, time_slot_id, days)
+   values ($1, $2, '{9}')`,
+  [ch.rows[0].id, slot.rows[0].id],
+  "hari jadwal angkut di luar 0-6",
+);
+await gagal(
+  db,
+  `insert into channel_schedules (channel_id, time_slot_id, days)
+   values ($1, $2, '{}')`,
+  [ch.rows[0].id, slot.rows[0].id],
+  "jadwal angkut tanpa satu hari pun",
+);
+
+await gagal(
+  db,
+  `insert into channel_posts (channel_id, author_id, title, content)
+   values ($1, $2, '   ', 'isi')`,
+  [ch.rows[0].id, U],
+  "pengumuman berjudul spasi saja",
+);
+await gagal(
+  db,
+  `insert into channel_posts (channel_id, author_id, title, content)
+   values ($1, $2, 'Judul', '')`,
+  [ch.rows[0].id, U],
+  "pengumuman tanpa isi",
+);
+
+/* Arsip RT tidak boleh ikut hilang bersama pengurus yang pindah. */
+const pengurus = "55555555-5555-5555-5555-555555555555";
+await db.query(
+  `insert into users (id, full_name, phone) values ($1, 'Pak Hendra', '0855')`,
+  [pengurus],
+);
+await db.query(
+  `insert into channel_posts (channel_id, author_id, title, content)
+   values ($1, $2, 'Truk Jumat lebih pagi', 'Mohon karung sudah di depan pagar.')`,
+  [ch.rows[0].id, pengurus],
+);
+await db.query(`delete from users where id = $1`, [pengurus]);
+const arsip = await db.query<{ title: string; author_id: string | null }>(
+  `select title, author_id from channel_posts where channel_id = $1`,
+  [ch.rows[0].id],
+);
+assert.equal(arsip.rows.length, 1, "pengumuman tetap ada setelah penulis hilang");
+assert.equal(arsip.rows[0].author_id, null, "penulisnya jadi null, bukan ikut terhapus");
+console.log("  ✓ pengumuman tetap utuh walau penulisnya dihapus");
+
 // Hapus warga harus ikut menghapus pesanannya (cascade).
 await db.query(`delete from users where id = $1`, [U]);
 const sisa = await db.query<{ n: number }>(
@@ -367,4 +498,5 @@ assert.equal(sisa.rows[0].n, 0, "pickup harus ikut terhapus bersama user");
 console.log("✓ hapus user men-cascade ke pickups");
 
 await db.close();
+
 console.log("\nSemua pemeriksaan skema lulus.");

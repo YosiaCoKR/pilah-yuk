@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { lulus, siapkan, tanggalISO } from "../test/bantu";
 
-const { klien, db, panggil, schema } = await siapkan();
+const { klien, db, app, panggil, schema } = await siapkan();
 
 const WARGA = "11111111-1111-1111-1111-111111111111";
 const LAIN = "22222222-2222-2222-2222-222222222222";
@@ -166,6 +166,72 @@ r = await panggil("GET", "/api/riwayat", { sebagai: LAIN });
 assert.equal(r.body.data.length, 1, "warga lain hanya melihat miliknya");
 assert.equal(r.body.data[0].alamatLengkap, "Jl. Melati No. 4");
 lulus("riwayat warga lain terpisah");
+
+/* ── Unduh bukti pengangkutan ────────────────────────────────────────────── */
+
+/** Badan bukti sebagai teks — `panggil()` hanya membaca JSON. */
+async function unduhBukti(id: string, sebagai?: string) {
+  const res = await app.handle(
+    new Request(`http://local/api/riwayat/${id}/bukti`, {
+      headers: sebagai ? { "x-user-id": sebagai } : {},
+    }),
+  );
+  return { res, teks: await res.text() };
+}
+
+let b = await unduhBukti(selesaiBaru.id);
+assert.equal(b.res.status, 401);
+lulus("bukti tanpa identitas → 401");
+
+b = await unduhBukti(selesaiBaru.id, WARGA);
+assert.equal(b.res.status, 200);
+assert.match(
+  b.res.headers.get("content-type") ?? "",
+  /^text\/plain/,
+  "dikirim sebagai teks biasa",
+);
+assert.equal(
+  b.res.headers.get("content-disposition"),
+  `attachment; filename="bukti-${selesaiBaru.code}.txt"`,
+  "diunduh dengan nama berkas berisi kode",
+);
+lulus("bukti terunduh sebagai lampiran teks bernama kode pesanan");
+
+for (const petikan of [
+  "TANDA TERIMA PENGANGKUTAN SAMPAH",
+  `Kode       : ${selesaiBaru.code}`,
+  "Jam        : 06.00–08.00",
+  "Alamat     : Rumah — Jl. Kenanga No. 12",
+  "Channel    : RW 05 Sukamaju",
+  "Petugas    : Pak Dedi",
+  "Berat total: 7,3 kg",
+  "Catatan    : Karung di pos ronda",
+]) {
+  assert.ok(b.teks.includes(petikan), `bukti memuat "${petikan}"`);
+}
+assert.match(b.teks, /Jenis      : (Organik, Plastik|Plastik, Organik)/);
+lulus("bukti memuat kode, jam, alamat, channel, petugas, berat, jenis & catatan");
+
+/* Tanpa catatan barisnya hilang — bukan "Catatan    : " yang kosong. */
+const tanpaCatatan = await unduhBukti(selesaiLama.id, WARGA);
+assert.ok(!tanpaCatatan.teks.includes("Catatan"), "baris catatan ikut hilang");
+assert.ok(tanpaCatatan.teks.includes("Berat total: 4,5 kg"));
+lulus("tanpa catatan → barisnya tidak dicetak kosong");
+
+/* Yang dibatalkan tidak punya timbangan maupun petugas: tanda terimanya akan
+   menyesatkan kalau dibawa ke rapat RT. */
+assert.equal((await unduhBukti(dibatalkan.id, WARGA)).res.status, 404);
+lulus("pengangkutan batal → tidak ada bukti (404)");
+
+assert.equal((await unduhBukti(selesaiBaru.id, LAIN)).res.status, 404);
+lulus("bukti warga lain → 404, bukan 403");
+
+assert.equal(
+  (await unduhBukti("00000000-0000-0000-0000-000000000000", WARGA)).res.status,
+  404,
+);
+assert.equal((await unduhBukti("bukan-uuid", WARGA)).res.status, 422);
+lulus("id tidak dikenal → 404, id bukan uuid → 422");
 
 await klien.close();
 console.log("\nSemua pemeriksaan API riwayat lulus.");
