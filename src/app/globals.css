@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/*
+  Pilah Yuk design tokens.
+
+  Palette is the Indonesian pilah-sampah bin code (hijau/kuning/biru/merah).
+  The waste colours are semantic: a colour appears only where it identifies a
+  waste category. Never use them as decoration.
+*/
+@theme {
+  /* surfaces + text */
+  --color-paper: #f2f5f0;
+  --color-card: #ffffff;
+  --color-line: #d3dbd2;
+  --color-line-kuat: #b4c0b3;
+  --color-ink: #0e2a2b;
+  --color-ink-2: #46605f;
+  /* Dipakai untuk teks pendukung kecil, jadi harus lolos 4.5:1 di
+     atas paper maupun card — bukan sekadar "abu-abu samar". */
+  --color-ink-3: #627372;
+
+  /* primary action — municipal green */
+  --color-hijau: #1b7f4b;
+  --color-hijau-tekan: #14603a;
+  --color-hijau-tipis: #e3efe7;
+
+  /* waste categories — bin colours */
+  --color-organik: #4a7c2f;
+  --color-plastik: #c47d14;
+  --color-kertas: #2f6fa8;
+  --color-campuran: #7a6b5d;
+
+  /* states */
+  --color-alarm: #c2452d;
+  --color-alarm-tipis: #fbeae7;
+
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-archivo), var(--font-jakarta), ui-sans-serif,
+    sans-serif;
+
+  /* printed-card corners, not SaaS pills */
+  --radius-kartu: 3px;
+}
+
+/*
+  Dark mode. Tailwind v4 requires `@theme` at the top level, so the dark
+  values are plain custom-property overrides on :root — the utilities already
+  reference these variables, so every `bg-card`/`text-ink` follows along.
+  Common on Indonesian AMOLED phones, and easier on the eyes at subuh.
+*/
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #0b2122;
+    --color-card: #123031;
+    --color-line: #27474a;
+    --color-line-kuat: #3c6063;
+    --color-ink: #eaf2ee;
+    --color-ink-2: #a3bbb8;
+    --color-ink-3: #7d9895;
+
+    --color-hijau: #3ea46b;
+    --color-hijau-tekan: #258a52;
+    --color-hijau-tipis: #163b2a;
+
+    --color-organik: #7aab56;
+    --color-plastik: #e0a03f;
+    --color-kertas: #6aa5d8;
+    --color-campuran: #a89787;
+
+    --color-alarm: #e8705a;
+    --color-alarm-tipis: #3a1d18;
+  }
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-sans);
+  /* Indonesian strings run long; keep them from breaking mid-word awkwardly. */
+  text-wrap: pretty;
+  /*
+    Plus Jakarta Sans ships a tight 0.19em space (Arial is 0.28em). In
+    semibold, phrases like "Jadwal rutin" visually fuse. Nudge the word gap
+    back toward a normal measure — it scales with font-size, so it holds at
+    every step of the type scale.
+  */
+  word-spacing: 0.06em;
+}
+
+/* Visible keyboard focus everywhere, never removed. */
+:focus-visible {
+  outline: 2px solid var(--color-hijau);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Display numerals sit flush: tabular so times and dates don't jitter. */
+.angka {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-stretch: 112%;
+  letter-spacing: -0.015em;
+}
+
+/* The one orchestrated motion: the order stub arriving. Nothing else moves. */
+@keyframes terbit {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

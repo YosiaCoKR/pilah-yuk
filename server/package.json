@@ -1,0 +1,35 @@
+{
+  "name": "pilah-yuk-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:check": "tsx src/db/schema.test.ts",
+    "test:api": "tsx src/routes/alamat.test.ts",
+    "test:slot": "tsx src/routes/slot-waktu.test.ts",
+    "test": "npm run db:check && npm run test:api && npm run test:slot && npm run test:pesanan && npm run test:langganan && npm run test:status && npm run test:jadwal && npm run test:pengingat && npm run test:riwayat && npm run test:rls",
+    "test:pesanan": "tsx src/routes/pesanan.test.ts",
+    "test:langganan": "tsx src/routes/langganan.test.ts",
+    "db:seed": "bun run src/db/seed.ts",
+    "test:status": "tsx src/routes/status-pesanan.test.ts",
+    "test:jadwal": "tsx src/routes/jadwal.test.ts",
+    "test:pengingat": "tsx src/pengingat.test.ts",
+    "test:riwayat": "tsx src/routes/riwayat.test.ts",
+    "test:rls": "tsx src/db/rls.test.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.6",
+    "elysia": "^1.4.11",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13",
+    "drizzle-kit": "^0.31.6",
+    "typescript": "^5.9.3"
+  }
+}
