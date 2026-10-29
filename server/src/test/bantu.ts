@@ -1,4 +1,8 @@
 /** Perkakas bersama untuk pemeriksaan: Postgres sementara + app yang sama. */
+
+/* Membuka jalur identitas lewat header `x-user-id` untuk pemeriksaan saja.
+   Di luar sini auth.ts gagal tertutup — lihat komentarnya. */
+process.env.AUTH_DEV_HEADER = "1";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
