@@ -286,6 +286,96 @@ export const channelPosts = pgTable(
   ],
 );
 
+/**
+ * Papan diskusi warga di sebuah channel: utas pembuka.
+ *
+ * Terpisah dari `channel_posts`. Pengumuman ditulis pengurus, berjudul, dan
+ * jadi arsip RT; utas diskusi ditulis warga mana pun, tanpa judul, dan hidup
+ * beberapa hari ("karung saya kemarin tidak terangkut, ada yang sama?").
+ * Menyatukannya berarti satu tabel dengan judul yang separuh barisnya kosong
+ * dan satu kolom penanda yang harus dicek di tiap query.
+ *
+ * `author_id` set null seperti pengumuman: percakapan "yang terlewat Jumat
+ * diambil Sabtu" masih dibaca tetangga setelah penulisnya pindah rumah.
+ */
+export const channelThreads = pgTable(
+  "channel_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => rwChannels.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Papan satu channel, terbaru di atas — persis urutan yang dibaca layar.
+    index("channel_threads_channel_dibuat_idx").on(
+      t.channelId,
+      t.createdAt.desc(),
+    ),
+    /* Utas kosong bukan pertanyaan. Dijaga di basis data juga, bukan hanya di
+       formulir: tombol kirim bisa ditekan dua kali, API bisa dipanggil
+       langsung. */
+    check("channel_threads_isi_terisi", sql`length(btrim(${t.content})) > 0`),
+    /* Anggota aktif saja. Isinya menyebut nomor rumah tetangga, jadi papannya
+       bukan forum terbuka — alasan yang sama seperti pengumuman. */
+    pgPolicy("channel_threads_baca_anggota", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`ikut_channel(${t.channelId})`,
+    }),
+  ],
+);
+
+/**
+ * Balasan pada satu utas diskusi.
+ *
+ * Menggantung di `thread_id`, dan tidak punya `parent_id` sendiri: layar
+ * diskusi mencetak balasan sebagai satu daftar rata di bawah utasnya. Tanpa
+ * kolom induk sesama balasan, balasan-dari-balasan tidak bisa dibuat sama
+ * sekali — bukan sesuatu yang harus ditolak API setiap kali.
+ *
+ * `channel_id` tidak disalin ke sini. Channel sebuah balasan selalu channel
+ * utasnya; dua salinan berarti dua jawaban yang bisa berbeda.
+ */
+export const channelReplies = pgTable(
+  "channel_replies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => channelThreads.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    /* Urut naik, bukan turun seperti utas: balasan dibaca sebagai percakapan
+       dari atas ke bawah, bukan daftar kabar terbaru. */
+    index("channel_replies_utas_dibuat_idx").on(t.threadId, t.createdAt),
+    check("channel_replies_isi_terisi", sql`length(btrim(${t.content})) > 0`),
+    /* Balasan ikut utasnya: terbaca kalau utasnya terbaca. */
+    pgPolicy("channel_replies_ikut_utas", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`exists (
+        select 1 from ${channelThreads} u
+        where u.id = ${t.threadId} and ikut_channel(u.channel_id)
+      )`,
+    }),
+  ],
+);
+
 /** Alamat jemput tersimpan milik warga. */
 export const addresses = pgTable(
   "addresses",
@@ -632,6 +722,10 @@ export type ChannelMember = typeof channelMembers.$inferSelect;
 export type ChannelSchedule = typeof channelSchedules.$inferSelect;
 export type ChannelPost = typeof channelPosts.$inferSelect;
 export type ChannelPostBaru = typeof channelPosts.$inferInsert;
+export type ChannelThread = typeof channelThreads.$inferSelect;
+export type ChannelThreadBaru = typeof channelThreads.$inferInsert;
+export type ChannelReply = typeof channelReplies.$inferSelect;
+export type ChannelReplyBaru = typeof channelReplies.$inferInsert;
 export type ChannelMemberBaru = typeof channelMembers.$inferInsert;
 export type TimeSlot = typeof timeSlots.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;

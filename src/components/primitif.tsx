@@ -31,13 +31,17 @@ export function Kartu({
   children,
   className = "",
   as: As = "div",
+  id,
 }: {
   children?: ReactNode;
   className?: string;
   as?: "div" | "li" | "article" | "section";
+  /** Sasaran lompatan dalam halaman, mis. dari hasil pencarian. */
+  id?: string;
 }) {
   return (
     <As
+      id={id}
       className={`rounded-kartu border border-line bg-card ${className}`}
     >
       {children}

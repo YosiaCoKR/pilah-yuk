@@ -50,6 +50,13 @@
       "when": 1793255547558,
       "tag": "0006_jadwal_pengumuman_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793628670424,
+      "tag": "0007_diskusi_channel",
+      "breakpoints": true
     }
   ]
 }

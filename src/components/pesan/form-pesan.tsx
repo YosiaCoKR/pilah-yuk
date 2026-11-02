@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ADDRESSES, SUBSCRIPTION, slotById } from "@/lib/mock";
+import { ADDRESSES, slotById } from "@/lib/mock";
 import type { Address, DraftOrder } from "@/lib/types";
+import { GerbangLangganan } from "../gerbang-langganan";
 import { PengingatLangganan } from "../pengingat-langganan";
 import { Label } from "../primitif";
-import { Tombol, TombolLink } from "../tombol";
+import { Tombol } from "../tombol";
 import { Ringkasan } from "./ringkasan";
 import { SeksiAlamat } from "./seksi-alamat";
 import { SeksiJenis } from "./seksi-jenis";
@@ -35,11 +36,6 @@ export function FormPesan() {
 
   const alamat = daftarAlamat.find((a) => a.id === draft.addressId);
   const slot = slotById(draft.timeSlotId);
-
-  /* An order cannot be scheduled without an active subscription, so the
-     notice sits above the form and the action changes rather than letting
-     warga fill everything in and get refused at the end. */
-  const langgananAktif = SUBSCRIPTION.status === "aktif";
 
   const kurang = [
     !draft.addressId && "alamat",
@@ -71,7 +67,7 @@ export function FormPesan() {
   return (
     <>
       <div className="space-y-7 px-4 pb-44 pt-5">
-        <PengingatLangganan langganan={SUBSCRIPTION} ringkas />
+        <PengingatLangganan ringkas />
 
         <div id="bagian-alamat" className="scroll-mt-20">
           <SeksiAlamat
@@ -134,27 +130,18 @@ export function FormPesan() {
       {/* Sticky action: always one thumb-reach away. */}
       <div className="fixed inset-x-0 bottom-0 border-t border-line bg-paper/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-[2px]">
         <div className="mx-auto max-w-screen-sm">
-          {langgananAktif ? (
-            <>
-              {!lengkap && (
-                <p className="mb-2 text-[13px] text-ink-2">
-                  Masih perlu: {kurang.join(", ")}.
-                </p>
-              )}
-              <Tombol lebar disabled={!lengkap || mengirim} onClick={kirim}>
-                {mengirim ? "Mengirim…" : "Kirim permintaan jemput"}
-              </Tombol>
-            </>
-          ) : (
-            <>
+          {/* Gerbangnya di atas tombol, bukan di dalam `kirim` — warga tahu
+              sejak awal kalau pesanannya tidak akan bisa dikirim. */}
+          <GerbangLangganan>
+            {!lengkap && (
               <p className="mb-2 text-[13px] text-ink-2">
-                Langganan belum aktif, jadi jemput belum bisa dijadwalkan.
+                Masih perlu: {kurang.join(", ")}.
               </p>
-              <TombolLink href="/langganan" lebar>
-                Pilih paket langganan
-              </TombolLink>
-            </>
-          )}
+            )}
+            <Tombol lebar disabled={!lengkap || mengirim} onClick={kirim}>
+              {mengirim ? "Mengirim…" : "Kirim permintaan jemput"}
+            </Tombol>
+          </GerbangLangganan>
         </div>
       </div>
     </>

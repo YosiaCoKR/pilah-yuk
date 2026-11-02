@@ -1,5 +1,13 @@
 import { WASTE_CATEGORIES, addressById, slotById } from "./mock";
-import type { RecurringSchedule, WasteKey, Weekday } from "./types";
+import { rupiah, tanggalPenuh } from "./tanggal";
+import type {
+  Invoice,
+  Plan,
+  RecurringSchedule,
+  Subscription,
+  WasteKey,
+  Weekday,
+} from "./types";
 
 /**
  * Jadwal dalam bahasa yang warga pakai sendiri.
@@ -81,4 +89,71 @@ export function lamaAnggota(hari: number) {
   if (hari < 365) return `${Math.round(hari / 30)} bulan`;
   const tahun = Math.floor(hari / 365);
   return tahun < 2 ? "lebih dari setahun" : `${tahun} tahun`;
+}
+
+/** Rata-rata minggu per bulan — penyetara paket mingguan dan bulanan. */
+const MINGGU_SEBULAN = 4.345;
+
+/**
+ * "8 jemput · sekitar 2× seminggu".
+ *
+ * Yang ditimbang warga saat memilih paket bukan kuota bulanan, tapi seberapa
+ * sering truk mampir. Dihitung dari kuota, bukan ditulis tangan per paket —
+ * paket baru dari backend ikut terbaca tanpa menambah kolom.
+ */
+export function iramaJemput(paket: Plan) {
+  const mingguan = paket.billingCycle === "mingguan";
+  const perMinggu = mingguan
+    ? paket.pickupQuota
+    : paket.pickupQuota / MINGGU_SEBULAN;
+  const bulat = Math.max(1, Math.round(perMinggu));
+  const irama = `${mingguan ? "" : "sekitar\u00a0"}${bulat}×\u00a0seminggu`;
+  return `${paket.pickupQuota} jemput · ${irama}`;
+}
+
+/** Harga satu jemput — angka yang membuat paket bisa dibandingkan. */
+export const hargaPerJemput = (paket: Plan) =>
+  Math.round(paket.price / paket.pickupQuota);
+
+/** "bulan" / "minggu", dibaca dari siklusnya saja supaya langganan yang sedang
+    berjalan bisa memakainya juga. */
+export const satuanSiklus = (siklus: Subscription["billingCycle"]) =>
+  siklus === "mingguan" ? "minggu" : "bulan";
+
+/** Label rata kiri dengan lebar tetap, supaya kuitansinya terbaca rapi di
+    aplikasi catatan mana pun — termasuk yang hurufnya tidak monospace. */
+const barisKuitansi = (label: string, nilai: string) =>
+  `${label.padEnd(10)}: ${nilai}`;
+
+/**
+ * Kuitansi langganan sebagai teks biasa.
+ *
+ * Bentuknya sengaja sama dengan tanda terima pengangkutan: satu berkas yang
+ * bisa dibuka di mana saja dan ditempel ke WhatsApp tanpa pembaca PDF.
+ * Tagihan gagal pun punya kuitansi — justru itu yang dibawa warga saat
+ * uangnya sudah terpotong tapi langganannya tidak jalan.
+ */
+export function teksKuitansi(tagihan: Invoice): string {
+  return [
+    "KUITANSI LANGGANAN",
+    "Pilah Yuk",
+    "",
+    barisKuitansi("Kode", tagihan.code),
+    barisKuitansi("Paket", tagihan.planName),
+    barisKuitansi(
+      "Masa",
+      `${tanggalPenuh(tagihan.periodStart)} sampai ${tanggalPenuh(tagihan.periodEnd)}`,
+    ),
+    barisKuitansi("Jumlah", rupiah(tagihan.amount)),
+    barisKuitansi("Cara bayar", tagihan.method),
+    barisKuitansi("Tanggal", tanggalPenuh(tagihan.paidAt)),
+    barisKuitansi("Status", tagihan.status === "lunas" ? "Lunas" : "Gagal"),
+    /* null, bukan "" — baris kosong di atas memang pemisah yang disengaja,
+       jadi hanya baris opsional yang boleh hilang. */
+    tagihan.failureReason ? barisKuitansi("Sebab", tagihan.failureReason) : null,
+    "",
+    "Dokumen ini dibuat otomatis dari aplikasi Pilah Yuk.",
+  ]
+    .filter((b) => b !== null)
+    .join("\n");
 }

@@ -11,6 +11,7 @@ import {
 import { urutkanHari } from "@/lib/kalimat";
 import { RingkasanRutin } from "./ringkasan-rutin";
 import type { RecurringSchedule, WasteKey, Weekday } from "@/lib/types";
+import { GerbangLangganan } from "../gerbang-langganan";
 import { IkonCentang, IkonJam, IkonPeta } from "../ikon";
 import { Label } from "../primitif";
 import { Sakelar } from "../sakelar";
@@ -242,14 +243,18 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
 
       <div className="fixed inset-x-0 bottom-0 border-t border-line bg-paper/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-[2px]">
         <div className="mx-auto max-w-screen-sm">
-          {!lengkap && (
-            <p className="mb-2 text-[13px] text-ink-2">
-              Masih perlu: {kurang.join(", ")}.
-            </p>
-          )}
-          <Tombol lebar disabled={!lengkap || tersimpan} onClick={simpan}>
-            {tersimpan ? "Menyimpan…" : "Simpan jadwal rutin"}
-          </Tombol>
+          {/* Jadwal rutin tanpa paket berjalan adalah janji yang tidak akan
+              ditepati — petugas tidak punya dasar untuk datang. */}
+          <GerbangLangganan perluKuota={false}>
+            {!lengkap && (
+              <p className="mb-2 text-[13px] text-ink-2">
+                Masih perlu: {kurang.join(", ")}.
+              </p>
+            )}
+            <Tombol lebar disabled={!lengkap || tersimpan} onClick={simpan}>
+              {tersimpan ? "Menyimpan…" : "Simpan jadwal rutin"}
+            </Tombol>
+          </GerbangLangganan>
         </div>
       </div>
     </div>

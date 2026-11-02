@@ -11,7 +11,7 @@ import {
 import { PengingatLangganan } from "@/components/pengingat-langganan";
 import { Kartu, Label } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
-import { CHANNELS, PICKUPS, SUBSCRIPTION } from "@/lib/mock";
+import { CHANNELS, PICKUPS } from "@/lib/mock";
 
 const PINTASAN = [
   { href: "/jadwal", label: "Jadwal rutin", Ikon: IkonJadwal },
@@ -55,7 +55,7 @@ export default function Beranda() {
         </Kartu>
       )}
 
-      <PengingatLangganan langganan={SUBSCRIPTION} />
+      <PengingatLangganan />
 
       <TombolLink href="/pesan" lebar className="min-h-14 text-[16px]">
         Pesan jemput sampah

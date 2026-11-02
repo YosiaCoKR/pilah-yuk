@@ -58,6 +58,15 @@ export function tanggalPanjang(iso: string) {
   }).format(d);
 }
 
+/** "13 Agustus 2026" — tanggal penuh tanpa nama hari. Di dokumen uang, hari
+    tidak menambah apa pun dan hanya memakan lebar layar. */
+export const tanggalPenuh = (iso: string) =>
+  new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parseISO(iso));
+
 /**
  * Plain-language distance in days: warga read "besok" far faster than a date.
  * Returns null when it is far enough out that the date itself is clearer.

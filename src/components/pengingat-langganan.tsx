@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useNilaiKlien } from "@/lib/klien";
 import { parseISO, rupiah, tanggalPendek } from "@/lib/tanggal";
-import type { Subscription } from "@/lib/types";
+import { useLangganan } from "@/lib/toko-langganan";
 
 /** Whole days from today until `iso`. Negative once it has passed. */
 function sisaHari(iso: string) {
@@ -17,13 +17,11 @@ function sisaHari(iso: string) {
  * needs to: a healthy subscription is a quiet line, an expiring one earns the
  * alarm colour. Says what will happen and by when — never just "expiring".
  */
-export function PengingatLangganan({
-  langganan,
-  ringkas = false,
-}: {
-  langganan: Subscription;
-  ringkas?: boolean;
-}) {
+export function PengingatLangganan({ ringkas = false }: { ringkas?: boolean }) {
+  /* Dibaca dari toko, bukan diterima sebagai prop: pengingat dan gerbang
+     pemesanan harus menyebut keadaan yang sama persis. Prop membuat halaman
+     server mengirim keadaan awal yang sudah basi begitu warga ganti paket. */
+  const langganan = useLangganan();
   /* Days-remaining depends on today, so it is resolved on the client. */
   const sisa = useNilaiKlien(() => sisaHari(langganan.endDate), null);
   const kuotaSisa = Math.max(0, langganan.pickupQuota - langganan.pickupUsed);

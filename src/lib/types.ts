@@ -10,6 +10,20 @@ export type WasteCategory = {
   handlingTip: string;
 };
 
+/**
+ * Satu benda sehari-hari dan tong tujuannya. Dipakai dua-duanya: contoh di
+ * kartu jenis dan hasil pencarian — satu daftar, jadi keduanya tidak mungkin
+ * saling bertentangan.
+ */
+export type WasteItem = {
+  nama: string;
+  jenis: WasteKey;
+  /** Alasan singkat, hanya untuk benda yang jawabannya bikin kaget. */
+  catatan?: string;
+  /** Ikut tampil sebagai contoh di kartu jenis: yang paling sering bikin ragu. */
+  sorot?: boolean;
+};
+
 export type Address = {
   id: string;
   label: string;
@@ -58,11 +72,51 @@ export type Subscription = {
   planName: string;
   billingCycle: "mingguan" | "bulanan";
   status: SubscriptionStatus;
+  /** Awal periode berjalan. ISO date. */
+  startDate: string;
   endDate: string; // ISO date
   pickupQuota: number;
   pickupUsed: number;
   price: number;
   autoRenew: boolean;
+};
+
+/**
+ * Paket langganan yang ditawarkan. Bentuknya sama dengan tabel
+ * `subscription_plans` — tidak ada kolom hiasan yang nanti tidak bisa diisi
+ * backend; kalimat "cocok untuk siapa" dihitung dari kuota, bukan disimpan.
+ */
+export type Plan = {
+  id: string;
+  name: string;
+  billingCycle: "mingguan" | "bulanan";
+  pickupQuota: number;
+  price: number;
+  /** Masih ditawarkan di wilayah warga. Paket lama tetap terbaca di sini
+      supaya yang sudah terlanjur berlangganan tahu posisinya. */
+  isActive: boolean;
+};
+
+/**
+ * Satu tagihan langganan. Bentuknya mengikuti tabel `payments` yang menyusul:
+ * jumlah, kanal bayar, dan kapan terbacanya.
+ */
+export type Invoice = {
+  id: string;
+  /** Kode yang disebut warga saat menanyakan pembayaran ke pengurus. */
+  code: string;
+  planName: string;
+  amount: number;
+  /** Kanal seperti yang dipilih warga: "QRIS", "GoPay", "Transfer BCA". */
+  method: string;
+  /** Tanggal ISO. Untuk tagihan gagal, kapan percobaannya. */
+  paidAt: string;
+  /** Masa langganan yang dibayar tagihan ini. ISO date. */
+  periodStart: string;
+  periodEnd: string;
+  status: "lunas" | "gagal";
+  /** Sebab gagalnya, dari kanal bayar. Hanya terisi saat status "gagal". */
+  failureReason?: string;
 };
 
 export type Weekday =

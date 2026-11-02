@@ -330,6 +330,226 @@ assert.deepEqual(
 );
 lulus("anggota membaca seluruh pengumuman, terbaru di atas");
 
+/* --- papan diskusi -------------------------------------------------------- */
+
+r = await panggil("GET", `/api/channel/${rw05.id}/diskusi`);
+assert.equal(r.status, 401);
+r = await panggil(
+  "GET",
+  "/api/channel/00000000-0000-0000-0000-000000000000/diskusi",
+  { sebagai: BUDI },
+);
+assert.equal(r.status, 404);
+r = await panggil("GET", `/api/channel/${rw05.id}/diskusi`, { sebagai: RINA });
+assert.equal(r.status, 403, "yang menunggu persetujuan belum boleh membaca papan");
+assert.match(r.body.pesan, /menunggu persetujuan/i);
+r = await panggil("POST", `/api/channel/${rw05.id}/diskusi`, {
+  sebagai: LUAR,
+  body: { isi: "Halo?" },
+});
+assert.equal(r.status, 403, "bukan anggota tidak boleh menulis");
+lulus("diskusi: bukan anggota tidak bisa membaca maupun menulis");
+
+r = await panggil("GET", `/api/channel/${rw05.id}/diskusi`, { sebagai: BUDI });
+assert.equal(r.status, 200);
+assert.deepEqual(r.body.data, [], "papan baru → daftar kosong, bukan null");
+
+/* Isi yang cuma spasi ditolak dengan sebab, bukan tersimpan sebagai utas
+   kosong — dan bukan 500 dari CHECK di basis data. */
+for (const isi of ["", "   "]) {
+  r = await panggil("POST", `/api/channel/${rw05.id}/diskusi`, {
+    sebagai: BUDI,
+    body: { isi },
+  });
+  assert.equal(r.status, 422, `isi ${JSON.stringify(isi)} harus ditolak`);
+}
+lulus("tulisan kosong & spasi saja ditolak 422");
+
+r = await panggil("POST", `/api/channel/${rw05.id}/diskusi`, {
+  sebagai: BUDI,
+  body: { isi: "  Karung saya kemarin tidak terangkut, ada yang sama?  " },
+});
+assert.equal(r.status, 201);
+assert.equal(
+  r.body.data.content,
+  "Karung saya kemarin tidak terangkut, ada yang sama?",
+  "spasi di ujung dirapikan sebelum disimpan",
+);
+assert.equal(r.body.data.author, "Pak Budi", "penulisnya langsung terbaca");
+assert.equal(r.body.data.authorRole, null, "warga biasa tanpa jabatan");
+assert.deepEqual(r.body.data.replies, [], "utas baru belum punya balasan");
+const utas1 = r.body.data.id;
+lulus("kirim utas → 201 lengkap dengan nama penulis & balasan kosong");
+
+/* Pengurus menjawab: jabatannya ikut, supaya layar bisa menandai jawaban ini
+   resmi. */
+r = await panggil("POST", `/api/channel/diskusi/${utas1}/balasan`, {
+  sebagai: HENDRA,
+  body: { isi: "Yang terlewat Jumat akan diambil Sabtu pagi." },
+});
+assert.equal(r.status, 201);
+assert.equal(r.body.data.utasId, utas1);
+assert.equal(r.body.data.author, "Pak Hendra");
+assert.equal(r.body.data.authorRole, "Ketua RW 05");
+lulus("balasan pengurus → 201 dengan jabatan penulis");
+
+r = await panggil("POST", `/api/channel/diskusi/${utas1}/balasan`, {
+  sebagai: BUDI,
+  body: { isi: "  " },
+});
+assert.equal(r.status, 422, "balasan spasi saja ditolak");
+r = await panggil(
+  "POST",
+  "/api/channel/diskusi/00000000-0000-0000-0000-000000000000/balasan",
+  { sebagai: BUDI, body: { isi: "Hai" } },
+);
+assert.equal(r.status, 404, "utas asing → 404");
+r = await panggil("POST", `/api/channel/diskusi/${utas1}/balasan`, {
+  sebagai: LUAR,
+  body: { isi: "Ikut nimbrung" },
+});
+assert.equal(r.status, 404, "utas channel yang tidak diikuti → 404, bukan 403");
+lulus("balasan: utas asing & channel yang tidak diikuti sama-sama 404");
+
+/* Utas kedua ditulis belakangan → harus naik ke atas, sementara balasan tetap
+   urut percakapan dari atas ke bawah. */
+r = await panggil("POST", `/api/channel/${rw05.id}/diskusi`, {
+  sebagai: BUDI,
+  body: { isi: "Jam berapa truk lewat hari Sabtu?" },
+});
+const utas2 = r.body.data.id;
+await panggil("POST", `/api/channel/diskusi/${utas1}/balasan`, {
+  sebagai: BUDI,
+  body: { isi: "Terima kasih, Pak." },
+});
+
+r = await panggil("GET", `/api/channel/${rw05.id}/diskusi`, { sebagai: BUDI });
+assert.deepEqual(
+  r.body.data.map((u: { id: string }) => u.id),
+  [utas2, utas1],
+  "utas terbaru di atas",
+);
+assert.deepEqual(r.body.data[0].replies, [], "utas tanpa balasan → daftar kosong");
+assert.deepEqual(
+  r.body.data[1].replies.map((b: { content: string }) => b.content),
+  ["Yang terlewat Jumat akan diambil Sabtu pagi.", "Terima kasih, Pak."],
+  "balasan urut percakapan, bukan terbaru dulu",
+);
+assert.equal(r.body.data[1].replies[0].authorRole, "Ketua RW 05");
+lulus("papan: utas terbaru di atas, balasan urut percakapan");
+
+/* --- kelola anggota: khusus pengurus channel ini -------------------------- */
+
+r = await panggil("GET", `/api/channel/${rw05.id}/anggota`);
+assert.equal(r.status, 401);
+r = await panggil(
+  "GET",
+  "/api/channel/00000000-0000-0000-0000-000000000000/anggota",
+  { sebagai: HENDRA },
+);
+assert.equal(r.status, 404);
+r = await panggil("GET", `/api/channel/${rw05.id}/anggota`, { sebagai: BUDI });
+assert.equal(r.status, 403, "anggota biasa tidak boleh membaca daftar warga");
+assert.match(r.body.pesan, /pengurus channel/i);
+r = await panggil("GET", `/api/channel/${rw05.id}/anggota`, { sebagai: RINA });
+assert.equal(r.status, 403, "yang menunggu persetujuan juga bukan pengurus");
+
+/* Pak Hendra ketua RW 05, tapi warga biasa di RW 06 — perannya per channel. */
+await db.insert(schema.channelMembers).values([
+  { channelId: rw06.id, userId: HENDRA, status: "aktif" },
+  { channelId: rw06.id, userId: LUAR, status: "menunggu" },
+]);
+r = await panggil("GET", `/api/channel/${rw06.id}/anggota`, { sebagai: HENDRA });
+assert.equal(r.status, 403, "pengurus di satu channel bukan pengurus di channel lain");
+lulus("daftar anggota: hanya pengurus channel yang bersangkutan");
+
+r = await panggil("GET", `/api/channel/${rw05.id}/anggota`, { sebagai: HENDRA });
+assert.equal(r.status, 200);
+assert.equal(r.body.data.length, 3);
+assert.equal(r.body.data[0].name, "Bu Rina", "yang menunggu diurut ke atas");
+assert.equal(r.body.data[0].status, "menunggu");
+assert.equal(r.body.data[0].houseLabel, "Rumah", "patokan rumah terbaca");
+const hendra = r.body.data.find((a: { name: string }) => a.name === "Pak Hendra");
+assert.equal(hendra.isPengurus, true);
+assert.equal(hendra.jabatan, "Ketua RW 05");
+const budi = r.body.data.find((a: { name: string }) => a.name === "Pak Budi");
+assert.equal(budi.isPengurus, false);
+assert.equal(budi.houseLabel, null, "belum menandai rumahnya → null, bukan kosong");
+const rinaId = r.body.data[0].id;
+lulus("daftar anggota: menunggu di atas, jabatan & patokan rumah terbaca");
+
+/* Anggota channel lain tidak bisa disentuh dengan menukar id di jalur. */
+r = await panggil("GET", `/api/channel/${rw06.id}/anggota`, { sebagai: LUAR });
+assert.equal(r.status, 403);
+const [anggotaRw06] = await db
+  .select({ id: schema.channelMembers.id })
+  .from(schema.channelMembers)
+  .where(eq(schema.channelMembers.channelId, rw06.id));
+r = await panggil(
+  "PUT",
+  `/api/channel/${rw05.id}/anggota/${anggotaRw06.id}/setujui`,
+  { sebagai: HENDRA },
+);
+assert.equal(r.status, 404, "anggota channel lain → 404");
+r = await panggil("PUT", `/api/channel/${rw05.id}/anggota/${rinaId}/setujui`, {
+  sebagai: BUDI,
+});
+assert.equal(r.status, 403, "anggota biasa tidak bisa menyetujui");
+lulus("setujui: anggota channel lain 404, anggota biasa 403");
+
+r = await panggil("PUT", `/api/channel/${rw05.id}/anggota/${rinaId}/setujui`, {
+  sebagai: HENDRA,
+});
+assert.equal(r.status, 200);
+assert.equal(r.body.data.status, "aktif");
+r = await panggil("GET", `/api/channel/${rw05.id}`, { sebagai: HENDRA });
+assert.equal(r.body.data.menungguPersetujuan, 0, "antrean pengurus ikut kosong");
+r = await panggil("GET", `/api/channel/${rw05.id}`, { sebagai: RINA });
+assert.equal(r.body.data.isMember, true, "Bu Rina kini anggota");
+assert.equal(r.body.data.jumlahPengumuman, 2, "dan pengumuman terbuka untuknya");
+/* Ditekan dua kali dari daftar yang belum segar: tetap 200, bukan galat. */
+r = await panggil("PUT", `/api/channel/${rw05.id}/anggota/${rinaId}/setujui`, {
+  sebagai: HENDRA,
+});
+assert.equal(r.status, 200, "menyetujui yang sudah aktif tidak ditolak");
+lulus("setujui → anggota aktif, antrean kosong, aman ditekan dua kali");
+
+/* Tolak = hapus barisnya: yang salah pilih RW boleh mengajukan lagi. */
+r = await panggil("POST", `/api/channel/${rw05.id}/gabung`, { sebagai: LUAR });
+assert.equal(r.status, 201);
+r = await panggil("GET", `/api/channel/${rw05.id}/anggota`, { sebagai: HENDRA });
+const tiniId = r.body.data.find((a: { name: string }) => a.name === "Bu Tini").id;
+r = await panggil("DELETE", `/api/channel/${rw05.id}/anggota/${tiniId}`, {
+  sebagai: LUAR,
+});
+assert.equal(r.status, 403, "yang menunggu tidak bisa mengelola siapa pun");
+r = await panggil("DELETE", `/api/channel/${rw05.id}/anggota/${tiniId}`, {
+  sebagai: HENDRA,
+});
+assert.equal(r.status, 200);
+r = await panggil("POST", `/api/channel/${rw05.id}/gabung`, { sebagai: LUAR });
+assert.equal(r.status, 201, "yang ditolak boleh mengajukan lagi");
+lulus("tolak menghapus barisnya — bukan mengunci warga di luar");
+
+/* Pengurus terakhir: channel tanpa pengurus tidak punya jalan keluar. */
+const hendraId = hendra.id;
+r = await panggil("DELETE", `/api/channel/${rw05.id}/anggota/${hendraId}`, {
+  sebagai: HENDRA,
+});
+assert.equal(r.status, 422);
+assert.match(r.body.pesan, /pengurus terakhir/i);
+await db
+  .update(schema.channelMembers)
+  .set({ isPengurus: true })
+  .where(eq(schema.channelMembers.userId, RINA));
+r = await panggil("DELETE", `/api/channel/${rw05.id}/anggota/${hendraId}`, {
+  sebagai: HENDRA,
+});
+assert.equal(r.status, 200, "ada pengurus lain → boleh keluar");
+lulus("pengurus terakhir tidak bisa dikeluarkan");
+
+/* Hendra sudah bukan anggota: dari sini pembacanya Bu Rina. */
+
 /* Pengurus yang pindah: pengumumannya tetap terbaca, penulisnya kosong. */
 await db.delete(schema.users).where(eq(schema.users.id, HENDRA));
 r = await panggil("GET", `/api/channel/${rw05.id}/pengumuman`, { sebagai: BUDI });
@@ -337,6 +557,14 @@ assert.equal(r.body.data.length, 2, "arsip pengumuman tidak ikut hilang");
 assert.equal(r.body.data[0].author, null);
 assert.equal(r.body.data[0].authorRole, null);
 lulus("penulis dihapus → pengumumannya tetap ada, namanya kosong");
+
+r = await panggil("GET", `/api/channel/${rw05.id}/diskusi`, { sebagai: BUDI });
+assert.equal(r.body.data.length, 2, "papan diskusi tidak ikut hilang");
+const balasanHendra = r.body.data[1].replies[0];
+assert.equal(balasanHendra.author, null, "nama penulis yang pindah jadi kosong");
+assert.equal(balasanHendra.authorRole, null);
+assert.match(balasanHendra.content, /Sabtu pagi/, "isi balasannya tetap utuh");
+lulus("penulis dihapus → balasannya tetap terbaca, namanya kosong");
 
 await klien.close();
 console.log("\nSemua pemeriksaan API channel lulus.");

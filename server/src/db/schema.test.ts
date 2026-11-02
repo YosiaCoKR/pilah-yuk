@@ -49,7 +49,9 @@ assert.deepEqual(nama, [
   "addresses",
   "channel_members",
   "channel_posts",
+  "channel_replies",
   "channel_schedules",
+  "channel_threads",
   "pickup_items",
   "pickups",
   "recurring_schedule_items",
@@ -488,6 +490,72 @@ const arsip = await db.query<{ title: string; author_id: string | null }>(
 assert.equal(arsip.rows.length, 1, "pengumuman tetap ada setelah penulis hilang");
 assert.equal(arsip.rows[0].author_id, null, "penulisnya jadi null, bukan ikut terhapus");
 console.log("  ✓ pengumuman tetap utuh walau penulisnya dihapus");
+
+/* --- papan diskusi --- */
+await gagal(
+  db,
+  `insert into channel_threads (channel_id, author_id, content)
+   values ($1, $2, '   ')`,
+  [ch.rows[0].id, U],
+  "utas diskusi berisi spasi saja",
+);
+
+const utas = await db.query<{ id: string }>(
+  `insert into channel_threads (channel_id, author_id, content)
+   values ($1, $2, 'Karung saya kemarin tidak terangkut, ada yang sama?')
+   returning id`,
+  [ch.rows[0].id, U],
+);
+await gagal(
+  db,
+  `insert into channel_replies (thread_id, author_id, content) values ($1, $2, '')`,
+  [utas.rows[0].id, U],
+  "balasan tanpa isi",
+);
+await db.query(
+  `insert into channel_replies (thread_id, author_id, content)
+   values ($1, $2, 'Sama, rumah nomor 14 juga dilewat.')`,
+  [utas.rows[0].id, U],
+);
+
+/* Utas hilang, balasannya tidak boleh tertinggal tanpa percakapan. */
+await db.query(`delete from channel_threads where id = $1`, [utas.rows[0].id]);
+const sisaBalasan = await db.query<{ n: number }>(
+  `select count(*)::int as n from channel_replies`,
+);
+assert.equal(sisaBalasan.rows[0].n, 0, "balasan harus ikut terhapus bersama utasnya");
+console.log("  ✓ hapus utas men-cascade ke balasannya");
+
+/* Percakapan tetap terbaca setelah penulisnya pindah rumah. */
+const wati = "66666666-6666-6666-6666-666666666666";
+await db.query(
+  `insert into users (id, full_name, phone) values ($1, 'Bu Wati', '0866')`,
+  [wati],
+);
+const utas2 = await db.query<{ id: string }>(
+  `insert into channel_threads (channel_id, author_id, content)
+   values ($1, $2, 'Jam berapa truk lewat hari Sabtu?') returning id`,
+  [ch.rows[0].id, wati],
+);
+await db.query(
+  `insert into channel_replies (thread_id, author_id, content)
+   values ($1, $2, 'Biasanya jam 6 pagi.')`,
+  [utas2.rows[0].id, wati],
+);
+await db.query(`delete from users where id = $1`, [wati]);
+const tinggal = await db.query<{ n: number; penulis: string | null }>(
+  `select count(*)::int as n, min(author_id::text) as penulis from channel_threads
+   where channel_id = $1`,
+  [ch.rows[0].id],
+);
+assert.equal(tinggal.rows[0].n, 1, "utas tetap ada setelah penulisnya hilang");
+assert.equal(tinggal.rows[0].penulis, null, "penulis utas jadi null, bukan ikut terhapus");
+const balasanTinggal = await db.query<{ n: number; penulis: string | null }>(
+  `select count(*)::int as n, min(author_id::text) as penulis from channel_replies`,
+);
+assert.equal(balasanTinggal.rows[0].n, 1, "balasan tetap ada setelah penulisnya hilang");
+assert.equal(balasanTinggal.rows[0].penulis, null, "penulis balasan jadi null");
+console.log("  ✓ diskusi tetap terbaca walau penulisnya dihapus");
 
 // Hapus warga harus ikut menghapus pesanannya (cascade).
 await db.query(`delete from users where id = $1`, [U]);
