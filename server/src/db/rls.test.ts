@@ -234,5 +234,198 @@ const dilihatLuar = await sebagai<{ user_id: string }>(
 assert.deepEqual(dilihatLuar, [], "bukan anggota → tidak ada daftar anggota");
 lulus("bukan anggota channel → daftar anggotanya tidak terbaca");
 
+/* --- langganan ------------------------------------------------------------ */
+
+/* Baris langganan memuat siapa berlangganan apa dan sampai kapan. Tanpa
+   kebijakan, tabel di skema `public` terbaca utuh lewat PostgREST dengan anon
+   key — jadi yang dibuktikan di bawah adalah pagar yang menahannya. */
+
+const [paketAktif] = await db
+  .insert(schema.subscriptionPlans)
+  .values({
+    name: "Bulanan Rumah Tangga",
+    billingCycle: "bulanan",
+    price: 45_000,
+    pickupQuota: 8,
+  })
+  .returning();
+/* Paket yang sudah ditarik tetap harus terbaca: warga yang masih memakainya
+   perlu melihat nama dan harganya sampai masa aktifnya habis. */
+const [paketDitarik] = await db
+  .insert(schema.subscriptionPlans)
+  .values({
+    name: "Bulanan Rumah Besar",
+    billingCycle: "bulanan",
+    price: 80_000,
+    pickupQuota: 16,
+    isActive: false,
+  })
+  .returning();
+
+const [langgananRina] = await db
+  .insert(schema.subscriptions)
+  .values({
+    userId: RINA,
+    planId: paketAktif.id,
+    status: "aktif",
+    startDate: "2026-10-12",
+    endDate: "2026-11-12",
+  })
+  .returning();
+const [langgananAgus] = await db
+  .insert(schema.subscriptions)
+  .values({
+    userId: AGUS,
+    planId: paketDitarik.id,
+    status: "aktif",
+    startDate: "2026-10-01",
+    endDate: "2026-11-01",
+  })
+  .returning();
+
+const paketTerbaca = await sebagai<{ name: string }>(
+  RINA,
+  "select name from subscription_plans",
+);
+assert.deepEqual(
+  paketTerbaca.map((b) => b.name).sort(),
+  ["Bulanan Rumah Besar", "Bulanan Rumah Tangga"],
+  "paket yang ditarik tetap terbaca; menyaring is_active mengosongkan layar warga yang masih memakainya",
+);
+lulus("daftar paket terbaca warga, termasuk paket yang sudah ditarik");
+
+const langgananTerbaca = await sebagai<{ id: string }>(
+  RINA,
+  "select id from subscriptions",
+);
+assert.deepEqual(
+  langgananTerbaca.map((b) => b.id),
+  [langgananRina.id],
+  "warga hanya melihat langganannya sendiri",
+);
+lulus("warga hanya melihat langganannya sendiri");
+
+/* Menyebut id tetangga langsung pun kosong: kebijakan menyaring baris, bukan
+   mengandalkan WHERE si pemanggil. */
+assert.deepEqual(
+  await sebagai(
+    RINA,
+    `select id from subscriptions where id = '${langgananAgus.id}'`,
+  ),
+  [],
+);
+lulus("menyebut id langganan tetangga langsung → kosong");
+
+assert.deepEqual(
+  await sebagai(null, "select id from subscriptions"),
+  [],
+  "tanpa auth.uid() tidak ada langganan yang terbaca",
+);
+lulus("tanpa identitas → tidak ada langganan terbaca");
+
+/* Menulis tetap tertutup: yang membuat langganan jadi `aktif` adalah
+   pembayaran yang terbaca di API. Kalau warga bisa menyetelnya sendiri,
+   seluruh gerbang langganan bisa dilewati tanpa pernah membayar. */
+await assert.rejects(
+  () =>
+    sebagai(
+      RINA,
+      `insert into subscriptions (user_id, plan_id, status, start_date, end_date)
+       values ('${RINA}', '${paketAktif.id}', 'aktif', '2027-01-01', '2027-02-01')`,
+    ),
+  "warga tidak boleh menyisipkan langganan langsung ke tabel",
+);
+const diperpanjang = await sebagai<{ id: string }>(
+  RINA,
+  `update subscriptions set end_date = '2027-12-31' returning id`,
+);
+assert.deepEqual(diperpanjang, [], "tidak ada langganan yang bisa diubah warga");
+const [masihSama] = await db
+  .select({ endDate: schema.subscriptions.endDate })
+  .from(schema.subscriptions)
+  .where(eq(schema.subscriptions.id, langgananRina.id));
+assert.equal(
+  masihSama.endDate,
+  "2026-11-12",
+  "masa langganan tidak bisa diperpanjang sendiri tanpa lewat API",
+);
+lulus("warga tidak bisa membuat atau memperpanjang langganannya sendiri");
+
+/* --- tagihan pembayaran --------------------------------------------------- */
+
+/* Baris tagihan memuat nominal, kanal bayar, dan id transaksi penyedia. */
+const [tagihanRina] = await db
+  .insert(schema.payments)
+  .values({
+    code: "PY-INV-4712",
+    userId: RINA,
+    subscriptionId: langgananRina.id,
+    planId: paketAktif.id,
+    amount: 45_000,
+    method: "qris",
+    status: "paid",
+    periodStart: "2026-10-12",
+    periodEnd: "2026-11-12",
+    paidAt: new Date(),
+  })
+  .returning();
+await db.insert(schema.payments).values({
+  code: "PY-INV-4409",
+  userId: AGUS,
+  subscriptionId: langgananAgus.id,
+  planId: paketDitarik.id,
+  amount: 80_000,
+  method: "va_bank",
+  channel: "BCA",
+  status: "paid",
+  periodStart: "2026-10-01",
+  periodEnd: "2026-11-01",
+  paidAt: new Date(),
+});
+
+assert.deepEqual(
+  (await sebagai<{ code: string }>(RINA, "select code from payments")).map(
+    (b) => b.code,
+  ),
+  [tagihanRina.code],
+  "warga hanya melihat tagihannya sendiri",
+);
+lulus("warga hanya melihat tagihannya sendiri");
+
+/* Nominal dan id transaksi tetangga bukan data publik, walau id-nya disebut. */
+assert.deepEqual(
+  await sebagai(RINA, "select amount from payments where code = 'PY-INV-4409'"),
+  [],
+);
+lulus("menyebut kode tagihan tetangga langsung → kosong");
+
+assert.deepEqual(
+  await sebagai(null, "select code from payments"),
+  [],
+  "tanpa auth.uid() tidak ada tagihan yang terbaca",
+);
+lulus("tanpa identitas → tidak ada tagihan terbaca");
+
+/* Yang menentukan sebuah tagihan jadi `paid` adalah webhook penyedia. Kalau
+   warga bisa menulis sendiri, ini jadi tombol "tandai lunas". */
+await assert.rejects(
+  () =>
+    sebagai(
+      RINA,
+      `insert into payments (code, user_id, subscription_id, plan_id, amount,
+         method, status, period_start, period_end, paid_at)
+       values ('PY-INV-9999', '${RINA}', '${langgananRina.id}',
+         '${paketAktif.id}', 45000, 'qris', 'paid', '2026-11-12',
+         '2026-12-12', now())`,
+    ),
+  "warga tidak boleh menyisipkan tagihan langsung ke tabel",
+);
+const ditandai = await sebagai<{ id: string }>(
+  RINA,
+  `update payments set status = 'paid', paid_at = now() returning id`,
+);
+assert.deepEqual(ditandai, [], "warga tidak bisa menandai tagihan lunas");
+lulus("warga tidak bisa membuat atau menandai tagihannya lunas");
+
 await klien.close();
-console.log("\nSemua pemeriksaan RLS penjemputan lulus.");
+console.log("\nSemua pemeriksaan RLS penjemputan, langganan & tagihan lulus.");

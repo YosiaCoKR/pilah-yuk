@@ -2,7 +2,21 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "./db";
 import { pickups, subscriptionPlans, subscriptions } from "./db/schema";
 
+/** Lama satu periode paket, dalam hari. */
+export const lamaPeriode = (siklus: "mingguan" | "bulanan") =>
+  siklus === "mingguan" ? 7 : 30;
+
+/** ISO yyyy-mm-dd, `hari` setelah `mulaiISO`. UTC supaya tidak bergeser. */
+export function geserHari(mulaiISO: string, hari: number) {
+  return new Date(Date.parse(mulaiISO) + hari * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 export type RingkasanLangganan = {
+  /** null saat warga belum pernah berlangganan. */
+  id: string | null;
+  planId: string | null;
   status: "aktif" | "kedaluwarsa" | "menunggu_bayar" | "belum_ada";
   planName: string | null;
   billingCycle: "mingguan" | "bulanan" | null;
@@ -36,6 +50,7 @@ export async function ringkasLangganan(
       status: subscriptions.status,
       endDate: subscriptions.endDate,
       startDate: subscriptions.startDate,
+      planId: subscriptions.planId,
       autoRenew: subscriptions.autoRenew,
       planName: subscriptionPlans.name,
       billingCycle: subscriptionPlans.billingCycle,
@@ -48,11 +63,27 @@ export async function ringkasLangganan(
       eq(subscriptions.planId, subscriptionPlans.id),
     )
     .where(eq(subscriptions.userId, penggunaId))
-    .orderBy(sql`${subscriptions.endDate} desc`)
+    /*
+      Langganan yang BERLAKU lebih dulu, baru yang terbaru.
+      
+      Sejak warga boleh punya langganan aktif DAN satu tagihan menggantung,
+      urutan `end_date desc` saja memilih baris yang menunggu bayar — periode
+      barunya memang berakhir paling belakang. Akibatnya warga yang baru
+      memilih paket lain dilaporkan `menunggu_bayar` dan kehilangan hak jemput
+      di hari-hari yang sudah dibayarnya, justru yang dihindari dengan
+      memisahkan barisnya.
+    */
+    .orderBy(
+      sql`(${subscriptions.status} = 'aktif'
+           and ${subscriptions.endDate} >= current_date) desc`,
+      sql`${subscriptions.endDate} desc`,
+    )
     .limit(1);
 
   if (!baris) {
     return {
+      id: null,
+      planId: null,
       status: "belum_ada",
       planName: null,
       billingCycle: null,
@@ -99,6 +130,8 @@ export async function ringkasLangganan(
           : null;
 
   return {
+    id: baris.id,
+    planId: baris.planId,
     status,
     planName: baris.planName,
     billingCycle: baris.billingCycle,

@@ -46,6 +46,26 @@ export const statusKeanggotaan = pgEnum("status_keanggotaan", [
   "menunggu",
 ]);
 
+/** Kanal bayar yang benar-benar dipakai orang di Indonesia. */
+export const metodeBayar = pgEnum("metode_bayar", [
+  "qris",
+  "ewallet",
+  "va_bank",
+]);
+
+/**
+ * `expired` dipisah dari `failed`: kode QRIS atau nomor VA yang kedaluwarsa
+ * tanpa dibayar bukan kegagalan — tidak ada uang yang bergerak, dan warga
+ * tinggal membuat tagihan baru. Mencampurnya membuat layar riwayat mencetak
+ * "Gagal" untuk orang yang sekadar berubah pikiran.
+ */
+export const statusPembayaran = pgEnum("status_pembayaran", [
+  "pending",
+  "paid",
+  "failed",
+  "expired",
+]);
+
 export const statusPickup = pgEnum("status_pickup", [
   "menunggu",
   "dijemput",
@@ -591,6 +611,23 @@ export const subscriptionPlans = pgTable(
   (t) => [
     check("subscription_plans_harga_wajar", sql`${t.price} >= 0`),
     check("subscription_plans_kuota_positif", sql`${t.pickupQuota} > 0`),
+    /*
+      RLS: daftar paket terbaca oleh siapa pun yang sudah masuk.
+
+      Tanpa kebijakan apa pun, tabel di skema `public` ikut terbuka lewat
+      PostgREST dengan anon key — jadi pagar ini dipasang bukan karena harganya
+      rahasia, tapi supaya "tidak ada kebijakan" tidak lagi berarti "terbuka
+      untuk semua".
+
+      Paket yang sudah ditarik SENGAJA ikut terbaca: warga yang masih memakainya
+      perlu melihat nama dan harganya sampai masa aktifnya habis. Menyaring
+      `is_active` di sini akan membuat layar langganannya kosong.
+    */
+    pgPolicy("subscription_plans_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
   ],
 );
 
@@ -612,6 +649,13 @@ export const subscriptions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /* Status baris ini bergerak karena uang: pembayaran terbaca, periode
+       diperpanjang, masa aktif habis. Tanpa kolom ini pertanyaan "sejak kapan
+       dia menunggu bayar" tidak bisa dijawab dari basis data — dan itu
+       pertanyaan pertama saat warga mengeluh uangnya sudah masuk. */
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     index("subscriptions_user_idx").on(t.userId, desc(t.endDate)),
@@ -619,7 +663,133 @@ export const subscriptions = pgTable(
     uniqueIndex("subscriptions_satu_aktif_idx")
       .on(t.userId)
       .where(sql`${t.status} = 'aktif'`),
+    /*
+      Satu tagihan menggantung per warga.
+
+      Langganan aktif DAN satu baris menunggu bayar boleh hidup bersama —
+      begitulah warga mengganti paket tanpa kehilangan hak jemput di periode
+      yang sudah dibayarnya. Yang dilarang adalah menunggu-bayar yang kedua:
+      menekan "ganti paket" dua kali akan melahirkan dua tagihan untuk orang
+      yang sama, dan yang membayar keduanya tidak punya cara menagih
+      kembaliannya. Pergantian pikiran mengubah baris yang sudah ada, bukan
+      menambah baris baru.
+    */
+    uniqueIndex("subscriptions_satu_menunggu_idx")
+      .on(t.userId)
+      .where(sql`${t.status} = 'menunggu_bayar'`),
     check("subscriptions_periode_urut", sql`${t.endDate} >= ${t.startDate}`),
+    /*
+      RLS: warga hanya boleh MEMBACA langganannya sendiri.
+
+      Barisnya memuat siapa berlangganan apa, berapa bayarnya, dan sampai
+      kapan — di lingkungan satu RW itu termasuk hal yang tidak perlu diketahui
+      tetangga. Lewat PostgREST tabel tanpa kebijakan terbaca utuh oleh
+      pemegang anon key, jadi inilah satu-satunya yang menahannya.
+
+      Hanya SELECT, sama alasannya dengan `pickups`: yang menentukan sebuah
+      langganan jadi `aktif` adalah pembayaran yang terbaca di API. Kebijakan
+      INSERT/UPDATE untuk warga akan memberi jalan menyetel status sendiri
+      tanpa pernah membayar.
+    */
+    pgPolicy("subscriptions_baca_milik_sendiri", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.userId} = ${authUid}`,
+    }),
+  ],
+);
+
+/**
+ * Satu percobaan pembayaran langganan.
+ *
+ * Periode dan paket DISIMPAN di baris ini, tidak diambil lewat join ke
+ * `subscriptions`: baris langganan diperbarui saat warga memperpanjang atau
+ * mengganti paket, jadi tagihan bulan lalu yang mengandalkan join akan
+ * mencetak paket dan masa langganan yang sekarang — struk yang berubah sendiri
+ * setelah dicetak. Tagihan adalah catatan sejarah; ia harus tetap mengatakan
+ * apa yang dibayar waktu itu.
+ */
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /* Kode yang disebut warga saat menanyakan pembayarannya ke pengurus RW,
+       seperti `code` di pickups. */
+    code: text("code").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    subscriptionId: uuid("subscription_id")
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: "cascade" }),
+    /* Paketnya sendiri, bukan lewat langganan — lihat catatan tabel. restrict:
+       paket yang pernah ditagih tidak boleh hilang dari sejarah. */
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => subscriptionPlans.id, { onDelete: "restrict" }),
+    /* Rupiah penuh, sama seperti harga paket. */
+    amount: integer("amount").notNull(),
+    method: metodeBayar("method").notNull(),
+    /* Nama kanalnya: "GoPay", "BCA". QRIS tidak punya — satu kode dipindai
+       dari aplikasi mana pun, jadi NULL di situ memang jawabannya. */
+    channel: text("channel"),
+    /* Id transaksi dari penyedia pembayaran. Unik: webhook yang dikirim ulang
+       (dan penyedia mana pun akan mengirimnya ulang) tidak boleh melahirkan
+       tagihan kedua atau memperpanjang langganan dua kali. */
+    providerRef: text("provider_ref"),
+    status: statusPembayaran("status").notNull().default("pending"),
+    /* Masa langganan yang dibayar tagihan ini. */
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    /* Terisi hanya kalau uangnya benar-benar masuk. */
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    /* Sebab gagal apa adanya dari kanal bayar — ini yang dibaca warga di layar
+       dan dibawa ke pengurus kalau saldonya terlanjur berkurang. */
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("payments_code_idx").on(t.code),
+    // Riwayat tagihan warga: percobaan terbaru lebih dulu.
+    index("payments_user_dibuat_idx").on(t.userId, desc(t.createdAt)),
+    /* Kunci idempoten webhook. Partial: tagihan yang baru dibuat belum punya
+       id dari penyedia, dan NULL yang banyak tidak boleh saling bentrok. */
+    uniqueIndex("payments_provider_ref_idx")
+      .on(t.providerRef)
+      .where(sql`${t.providerRef} is not null`),
+    check("payments_jumlah_wajar", sql`${t.amount} >= 0`),
+    check(
+      "payments_periode_urut",
+      sql`${t.periodEnd} >= ${t.periodStart}`,
+    ),
+    /*
+      `paid_at` terisi PERSIS saat status `paid`.
+
+      Dua arah, bukan satu: tagihan `paid` tanpa tanggal membuat layar riwayat
+      mencetak struk tanpa kapan uangnya masuk, dan tanggal bayar pada tagihan
+      yang gagal adalah bukti palsu bahwa warga sudah membayar.
+    */
+    check(
+      "payments_lunas_bertanggal",
+      sql`(${t.status} = 'paid') = (${t.paidAt} is not null)`,
+    ),
+    /*
+      RLS: warga hanya boleh MEMBACA tagihannya sendiri.
+
+      Isinya nominal, kanal bayar, dan id transaksi penyedia. Tanpa kebijakan,
+      tabel di skema `public` terbaca utuh lewat PostgREST dengan anon key.
+
+      Hanya SELECT, dan di tabel ini alasannya paling keras: yang menentukan
+      sebuah tagihan jadi `paid` adalah webhook penyedia pembayaran. Kebijakan
+      INSERT/UPDATE untuk warga sama dengan memberi tombol "tandai lunas".
+    */
+    pgPolicy("payments_baca_milik_sendiri", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.userId} = ${authUid}`,
+    }),
   ],
 );
 
@@ -729,6 +899,8 @@ export type ChannelReplyBaru = typeof channelReplies.$inferInsert;
 export type ChannelMemberBaru = typeof channelMembers.$inferInsert;
 export type TimeSlot = typeof timeSlots.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type PaymentBaru = typeof payments.$inferInsert;
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type RecurringSchedule = typeof recurringSchedules.$inferSelect;

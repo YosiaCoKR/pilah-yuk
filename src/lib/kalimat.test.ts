@@ -7,11 +7,16 @@ import {
   teksKuitansi,
 } from "./kalimat";
 import {
+  BENDA,
   PAKET,
+  TIPS_PILAH,
   TAGIHAN,
   WASTE_CATEGORIES,
+  bendaJenis,
   cariBenda,
   contohBenda,
+  seringTertukar,
+  tipHari,
 } from "./mock";
 import type { Invoice, Plan } from "./types";
 
@@ -135,5 +140,77 @@ assert.ok(cariBenda("plastik").every((b) => b.jenis === "plastik"));
 assert.deepEqual(cariBenda("   "), []);
 assert.deepEqual(cariBenda("kulkas"), []);
 console.log("✓ cari benda: nama, nama jenis, spasi, dan yang tidak ketemu");
+
+/* "Sering dikira X" diisi dari `mirip`, bukan dari kata di `catatan`.
+   Sebelumnya ini ditebak dengan mencari nama jenis di dalam catatan, dan
+   amplop (kertas) ikut terdaftar sebagai plastik hanya karena catatannya
+   menyebut "jendela plastiknya" — halaman panduan yang menaruh benda di tong
+   yang salah. */
+assert.ok(
+  !seringTertukar("plastik").some((b) => b.nama === "amplop"),
+  "amplop tidak pernah dikira plastik; catatannya cuma menyebut kata itu",
+);
+assert.deepEqual(seringTertukar("kertas").map((b) => b.nama), ["tisu bekas"]);
+for (const jenis of WASTE_CATEGORIES.map((k) => k.key)) {
+  /* Benda yang jenisnya sama dengan tong yang sedang dibuka bukan "sering
+     dikira" — ia memang masuk sini, dan mencetaknya di bagian itu
+     membantahnya sendiri. */
+  assert.ok(
+    seringTertukar(jenis).every((b) => b.jenis !== jenis),
+    `seringTertukar(${jenis}) ikut mencetak benda jenis ${jenis} sendiri`,
+  );
+}
+assert.ok(
+  BENDA.every((b) => b.mirip !== b.jenis),
+  "mirip menunjuk tong yang salah kira, jadi tidak boleh sama dengan jenisnya",
+);
+
+/* Halaman detail membagi benda jadi "tinggal masukkan" dan "ada syaratnya"
+   lewat ada-tidaknya catatan — jadi pembagiannya harus utuh, tidak ada benda
+   yang hilang atau terhitung dua kali. */
+for (const jenis of WASTE_CATEGORIES.map((k) => k.key)) {
+  const benda = bendaJenis(jenis);
+  assert.ok(benda.length > 0, `jenis ${jenis} tidak punya benda sama sekali`);
+  assert.equal(
+    benda.filter((b) => !b.catatan).length + benda.filter((b) => b.catatan).length,
+    benda.length,
+  );
+  assert.ok(benda.every((b) => b.jenis === jenis));
+}
+console.log("✓ panduan detail: sering-dikira dari data, pembagian benda utuh");
+
+/* Tips harian: berotasi menurut TANGGAL, bukan diundi. Dibuka dua kali di
+   hari yang sama harus memberi tip yang sama — kalau tidak, "tips hari ini"
+   tidak bisa jadi bahan obrolan di grup RT. */
+assert.deepEqual(tipHari("2026-11-04"), tipHari("2026-11-04"));
+assert.notDeepEqual(tipHari("2026-11-04"), tipHari("2026-11-05"));
+/* Satu putaran penuh kembali ke tip yang sama. */
+const putaran = TIPS_PILAH.length;
+const majuHari = (iso: string, n: number) =>
+  new Date(Date.parse(iso) + n * 86_400_000).toISOString().slice(0, 10);
+assert.deepEqual(tipHari("2026-11-04"), tipHari(majuHari("2026-11-04", putaran)));
+/* Tanggal sebelum 1970 memberi hari negatif; modulo mentah akan memulangkan
+   indeks negatif dan tipnya jadi undefined. */
+assert.ok(tipHari("1969-07-20"));
+/* Tiap hari dalam satu putaran harus kena tip yang berbeda — rotasi yang
+   melompati sebagian tips membuat sisanya tidak pernah terbaca. */
+assert.equal(
+  new Set(
+    Array.from({ length: putaran }, (_, i) =>
+      tipHari(majuHari("2026-11-04", i)).teks,
+    ),
+  ).size,
+  putaran,
+);
+/* Tipsnya dirakit dari data panduan, jadi jumlahnya harus mengikutinya. */
+assert.equal(
+  putaran,
+  WASTE_CATEGORIES.length + BENDA.filter((b) => b.catatan).length,
+);
+assert.ok(TIPS_PILAH.every((t) => t.teks.trim().length > 0));
+assert.ok(
+  TIPS_PILAH.every((t) => WASTE_CATEGORIES.some((k) => k.key === t.jenis)),
+);
+console.log("✓ tips harian: berotasi per tanggal, satu putaran penuh, dari data panduan");
 
 console.log("\nSemua pemeriksaan kalimat lulus.");

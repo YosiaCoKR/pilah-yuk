@@ -79,18 +79,33 @@ export const BENDA: WasteItem[] = [
   { nama: "majalah", jenis: "kertas" },
 
   { nama: "popok", jenis: "campuran", sorot: true, catatan: "Bungkus rapat dulu supaya petugas aman memegangnya." },
-  { nama: "styrofoam", jenis: "campuran", sorot: true, catatan: "Terlihat seperti plastik, tapi tidak ada yang mendaur ulangnya di sini." },
+  { nama: "styrofoam", jenis: "campuran", sorot: true, mirip: "plastik", catatan: "Terlihat seperti plastik, tapi tidak ada yang mendaur ulangnya di sini." },
   { nama: "pecahan kaca", jenis: "campuran", sorot: true, catatan: "Bungkus koran dan tulisi \u201ckaca\u201d — tangan petugas yang membongkarnya." },
   { nama: "puntung rokok", jenis: "campuran", sorot: true },
-  { nama: "tisu bekas", jenis: "campuran", catatan: "Sudah kotor dan basah, jadi tidak bisa ikut kertas." },
+  { nama: "tisu bekas", jenis: "campuran", mirip: "kertas", catatan: "Sudah kotor dan basah, jadi tidak bisa ikut kertas." },
   { nama: "masker", jenis: "campuran" },
-  { nama: "sikat gigi", jenis: "campuran", catatan: "Campuran plastik dan nilon yang tidak bisa dipisah lagi." },
-  { nama: "kemasan minyak", jenis: "campuran", catatan: "Berminyak di dalam; kalau sempat dicuci bersih, boleh ikut plastik." },
+  { nama: "sikat gigi", jenis: "campuran", mirip: "plastik", catatan: "Campuran plastik dan nilon yang tidak bisa dipisah lagi." },
+  { nama: "kemasan minyak", jenis: "campuran", mirip: "plastik", catatan: "Berminyak di dalam; kalau sempat dicuci bersih, boleh ikut plastik." },
 ];
 
 /** Contoh benda untuk kartu jenis — diambil dari daftar yang sama. */
 export const contohBenda = (jenis: WasteKey) =>
   BENDA.filter((b) => b.jenis === jenis && b.sorot).map((b) => b.nama);
+
+/** Seluruh benda satu jenis, untuk daftar kategori yang dibuka penuh. */
+export const bendaJenis = (jenis: WasteKey) =>
+  BENDA.filter((b) => b.jenis === jenis);
+
+/**
+ * Benda jenis LAIN yang sering dikira masuk sini.
+ *
+ * Dibaca dari `mirip`, bukan ditebak dari kata di `catatan`: catatan "jendela
+ * plastiknya disobek dulu" menyebut plastik tanpa ada yang pernah mengira
+ * amplop itu plastik — dan panduan yang salah menaruh benda di tong yang
+ * salah.
+ */
+export const seringTertukar = (jenis: WasteKey): WasteItem[] =>
+  BENDA.filter((b) => b.mirip === jenis);
 
 /**
  * Cari benda menurut namanya, atau menurut nama jenisnya — warga yang
@@ -105,6 +120,47 @@ export function cariBenda(kata: string): WasteItem[] {
       b.nama.includes(q) ||
       WASTE_CATEGORIES.find((k) => k.key === b.jenis)!.name.toLowerCase().includes(q),
   );
+}
+
+/**
+ * Tips pilah yang berotasi tiap hari.
+ *
+ * Dirakit dari dua sumber yang SUDAH ada: cara menangani tiap jenis, dan
+ * catatan benda yang jawabannya bikin kaget. Bukan daftar tips terpisah —
+ * daftar kedua akan segera bertentangan dengan panduan di halaman jenis, dan
+ * warga yang menemukan dua nasihat berbeda akan berhenti mempercayai
+ * keduanya.
+ */
+export type TipPilah = {
+  teks: string;
+  jenis: WasteKey;
+  /** Terisi kalau tipnya berangkat dari satu benda tertentu. */
+  benda?: string;
+};
+
+export const TIPS_PILAH: TipPilah[] = [
+  ...WASTE_CATEGORIES.map((k) => ({ teks: k.handlingTip, jenis: k.key })),
+  ...BENDA.filter((b) => b.catatan).map((b) => ({
+    teks: b.catatan!,
+    jenis: b.jenis,
+    benda: b.nama,
+  })),
+];
+
+/**
+ * Tip untuk satu tanggal. Berotasi menurut tanggalnya, bukan diundi: satu
+ * tip yang sama untuk semua warga sepanjang hari itu, jadi "tips hari ini"
+ * bisa jadi bahan obrolan di grup RT — dan tidak berganti sendiri tiap kali
+ * halamannya dibuka ulang.
+ */
+export function tipHari(iso: string): TipPilah {
+  /* Date.parse("yyyy-mm-dd") = tengah malam UTC, jadi pembagiannya jatuh
+     persis di batas hari — beda dari parseISO yang waktu lokal dan bisa
+     bergeser sehari di zona berpenghematan waktu siang. */
+  const hari = Math.floor(Date.parse(iso) / 86_400_000);
+  return TIPS_PILAH[
+    ((hari % TIPS_PILAH.length) + TIPS_PILAH.length) % TIPS_PILAH.length
+  ];
 }
 
 /** Bin colour per category. Used anywhere a category needs identifying. */

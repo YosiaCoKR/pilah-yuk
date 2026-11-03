@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { buatApp } from "../app";
+import { badanCharge, type Gateway } from "../pembayaran";
 import type { Db } from "../db";
 import * as schema from "../db/schema";
 
@@ -57,7 +58,44 @@ export async function beriHakSupabase(klien: PGlite) {
   `);
 }
 
-export async function siapkan() {
+/**
+ * Penyedia pembayaran tiruan untuk pemeriksaan.
+ *
+ * Tetap melewati `badanCharge`, jadi kanal yang tidak dilayani Core API
+ * (Mandiri, OVO, DANA) ditolak di sini sama seperti di produksi — tiruan yang
+ * meluluskan semuanya akan menyembunyikan justru aturan itu.
+ */
+export function buatGatewayTiruan(): Gateway & { dimatikan: string[] } {
+  const dimatikan: string[] = [];
+  return {
+    dimatikan,
+    tagih: async (p) => {
+      badanCharge(p);
+      return {
+        providerRef: `MT-${p.code}`,
+        qrUrl: p.method === "qris" ? `https://contoh.test/qr/${p.code}` : null,
+        vaNumber: p.method === "va_bank" ? "8277081234567890" : null,
+        deeplink:
+          p.method === "ewallet"
+            ? `https://contoh.test/deeplink/${p.code}`
+            : null,
+      };
+    },
+    batalkan: async (code) => {
+      dimatikan.push(code);
+      return true;
+    },
+  };
+}
+
+/* `null` = tanpa penyedia (menguji gagal-tertutup). Bukan `undefined`:
+   parameter berdefault tetap jatuh ke defaultnya saat diberi undefined. */
+/** Server key tiruan: dipakai menghitung tanda tangan webhook di pemeriksaan. */
+export const KUNCI_UJI = "SB-Mid-server-UJICOBA";
+
+export async function siapkan(
+  gateway: Gateway | null = buatGatewayTiruan(),
+) {
   const klien = new PGlite();
   await pasangPrasyaratSupabase(klien);
   for (const f of readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort()) {
@@ -70,7 +108,7 @@ export async function siapkan() {
   await beriHakSupabase(klien);
 
   const db = drizzle(klien, { schema, casing: "snake_case" }) as unknown as Db;
-  const app = buatApp(db);
+  const app = buatApp(db, gateway ?? undefined, KUNCI_UJI);
 
   async function panggil(
     method: string,
@@ -90,7 +128,7 @@ export async function siapkan() {
     return { status: res.status, body: await res.json().catch(() => null) };
   }
 
-  return { klien, db, app, panggil, schema };
+  return { klien, db, app, panggil, schema, gateway };
 }
 
 export const lulus = (label: string) => console.log(`  ✓ ${label}`);

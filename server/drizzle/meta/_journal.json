@@ -57,6 +57,27 @@
       "when": 1793628670424,
       "tag": "0007_diskusi_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793726183179,
+      "tag": "0008_rls_langganan",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793726417067,
+      "tag": "0009_langganan_satu_tagihan",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793726639355,
+      "tag": "0010_transaksi_pembayaran",
+      "breakpoints": true
     }
   ]
 }

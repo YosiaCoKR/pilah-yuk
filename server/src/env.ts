@@ -13,4 +13,10 @@ export const env = {
     return wajib("DATABASE_URL");
   },
   port: Number(process.env.PORT ?? 3001),
+  get midtransServerKey() {
+    return wajib("MIDTRANS_SERVER_KEY");
+  },
+  /* Sandbox sampai disetel eksplisit: salah arah ke produksi berarti menagih
+     uang sungguhan dari warga saat mencoba-coba. */
+  midtransProduksi: process.env.MIDTRANS_PRODUKSI === "1",
 };

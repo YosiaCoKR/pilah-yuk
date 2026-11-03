@@ -22,6 +22,12 @@ export type WasteItem = {
   catatan?: string;
   /** Ikut tampil sebagai contoh di kartu jenis: yang paling sering bikin ragu. */
   sorot?: boolean;
+  /**
+   * Tong yang benda ini SERING DIKIRA tempatnya, padahal bukan. Hanya diisi
+   * kalau salah kiranya memang umum — bukan setiap kali `catatan` menyebut
+   * jenis lain.
+   */
+  mirip?: WasteKey;
 };
 
 export type Address = {

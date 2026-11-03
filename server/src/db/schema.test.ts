@@ -52,6 +52,7 @@ assert.deepEqual(nama, [
   "channel_replies",
   "channel_schedules",
   "channel_threads",
+  "payments",
   "pickup_items",
   "pickups",
   "recurring_schedule_items",
@@ -203,6 +204,102 @@ await gagal(
    values ($1, $2, 'menunggu_bayar', '2026-12-01', '2026-11-01')`,
   [U, paket.rows[0].id],
   "periode langganan terbalik (selesai sebelum mulai)",
+);
+
+/* Ganti paket: aktif + satu menunggu bayar boleh hidup bersama, supaya warga
+   tidak kehilangan hak jemput di periode yang sudah dibayarnya. */
+await db.query(
+  `insert into subscriptions (user_id, plan_id, status, start_date, end_date)
+   values ($1, $2, 'menunggu_bayar', '2026-11-01', '2026-12-01')`,
+  [U, paket.rows[0].id],
+);
+await gagal(
+  db,
+  `insert into subscriptions (user_id, plan_id, status, start_date, end_date)
+   values ($1, $2, 'menunggu_bayar', '2026-12-01', '2027-01-01')`,
+  [U, paket.rows[0].id],
+  "tagihan menggantung kedua untuk warga yang sama",
+);
+
+/* Kolom yang dibaca saat warga mengeluh "uang saya sudah masuk": kapan baris
+   ini terakhir bergerak. */
+const jejak = await db.query<{ n: number }>(
+  `select count(*)::int as n from information_schema.columns
+   where table_name = 'subscriptions' and column_name = 'updated_at'`,
+);
+assert.equal(jejak.rows[0].n, 1, "subscriptions.updated_at harus ada");
+console.log("  ✓ langganan: satu tagihan menggantung, jejak updated_at ada");
+
+/* --- tagihan pembayaran ---
+   Jalur uang, jadi tiap pagarnya diuji: struk yang berubah sendiri, webhook
+   yang dikirim ulang, dan tanggal bayar palsu masing-masing punya akibat yang
+   tidak bisa dibereskan belakangan. */
+const langg = await db.query<{ id: string }>(
+  `select id from subscriptions where status = 'aktif' limit 1`,
+);
+const bayar = (kolom: string, nilai: string) =>
+  `insert into payments (code, user_id, subscription_id, plan_id, amount,
+     method, status, period_start, period_end${kolom})
+   values ($1, $2, $3, $4, 45000, 'qris', ${nilai})`;
+
+await db.query(
+  bayar(", paid_at, provider_ref", `'paid', '2026-10-12', '2026-11-12', now(), 'MT-001'`),
+  ["PY-INV-4712", U, langg.rows[0].id, paket.rows[0].id],
+);
+
+await gagal(
+  db,
+  bayar(", paid_at", `'paid', '2026-11-12', '2026-12-12', now()`),
+  ["PY-INV-4712", U, langg.rows[0].id, paket.rows[0].id],
+  "kode tagihan kembar",
+);
+/* Webhook penyedia PASTI dikirim ulang. Tanpa pagar ini, kiriman kedua
+   melahirkan tagihan kedua — dan langganan diperpanjang dua kali. */
+await gagal(
+  db,
+  bayar(", paid_at, provider_ref", `'paid', '2026-11-12', '2026-12-12', now(), 'MT-001'`),
+  ["PY-INV-4800", U, langg.rows[0].id, paket.rows[0].id],
+  "provider_ref kembar (webhook dikirim ulang)",
+);
+/* Lunas tanpa tanggal: struk tanpa kapan uangnya masuk. */
+await gagal(
+  db,
+  bayar("", `'paid', '2026-11-12', '2026-12-12'`),
+  ["PY-INV-4801", U, langg.rows[0].id, paket.rows[0].id],
+  "lunas tanpa tanggal bayar",
+);
+/* Tanggal bayar pada tagihan gagal: bukti palsu bahwa warga sudah membayar. */
+await gagal(
+  db,
+  bayar(", paid_at", `'failed', '2026-11-12', '2026-12-12', now()`),
+  ["PY-INV-4802", U, langg.rows[0].id, paket.rows[0].id],
+  "tagihan gagal tapi bertanggal bayar",
+);
+await gagal(
+  db,
+  bayar("", `'pending', '2026-12-12', '2026-11-12'`),
+  ["PY-INV-4803", U, langg.rows[0].id, paket.rows[0].id],
+  "periode tagihan terbalik",
+);
+
+/* Beberapa tagihan boleh menggantung tanpa provider_ref — NULL tidak saling
+   bentrok di index partial. */
+await db.query(
+  bayar("", `'pending', '2026-11-12', '2026-12-12'`),
+  ["PY-INV-4804", U, langg.rows[0].id, paket.rows[0].id],
+);
+await db.query(
+  bayar("", `'expired', '2026-11-12', '2026-12-12'`),
+  ["PY-INV-4805", U, langg.rows[0].id, paket.rows[0].id],
+);
+console.log("  ✓ tagihan: kode & provider_ref unik, lunas wajib bertanggal");
+
+/* Paket yang pernah ditagih tidak boleh hilang dari sejarah. */
+await gagal(
+  db,
+  `delete from subscription_plans where id = $1`,
+  [paket.rows[0].id],
+  "hapus paket yang masih punya tagihan",
 );
 
 /* --- kolom yang dibaca layar Riwayat ---

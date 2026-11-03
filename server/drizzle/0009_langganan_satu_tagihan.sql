@@ -1,0 +1,2 @@
+ALTER TABLE "subscriptions" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "subscriptions_satu_menunggu_idx" ON "subscriptions" USING btree ("user_id") WHERE "subscriptions"."status" = 'menunggu_bayar';
