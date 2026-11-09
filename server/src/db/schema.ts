@@ -976,6 +976,7 @@ export type PickupBaru = typeof pickups.$inferInsert;
 export type PickupItem = typeof pickupItems.$inferSelect;
 export type Address = typeof addresses.$inferSelect;
 export type WasteCategory = typeof wasteCategories.$inferSelect;
+export type WasteGuideItem = typeof wasteGuideItems.$inferSelect;
 export type RwChannel = typeof rwChannels.$inferSelect;
 export type ChannelMember = typeof channelMembers.$inferSelect;
 export type ChannelSchedule = typeof channelSchedules.$inferSelect;

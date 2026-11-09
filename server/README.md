@@ -20,10 +20,12 @@ npm run dev              # http://localhost:3001
 | Perintah | Yang diperiksa |
 |---|---|
 | `npm run db:check` | Migrasi benar-benar jalan; constraint menggigit |
+| `npm run test:seed` | Seed data acuan jalan, idempoten, dan panduan pilahnya utuh |
 | `npm run test:api` | API alamat, termasuk isolasi antar warga |
 | `npm run test:slot` | Slot jam + perhitungan sisa kuota |
 | `npm run test:pesanan` | Kirim, daftar, dan batalkan pesanan |
-| `npm run test:langganan` | Gerbang langganan sebelum memesan |
+| `npm run test:langganan` | Paket, status, tagihan, kuitansi, gerbang langganan |
+| `npm run test:panduan` | Panduan pilah: daftar, detail, pencarian, tips berotasi |
 
 ## Endpoint
 
@@ -51,6 +53,10 @@ Semua endpoint butuh identitas pemanggil.
 | POST | `/api/langganan/bayar` | Buat tagihan satu paket (baru / ganti / perpanjang) |
 | GET | `/api/langganan/tagihan` | Riwayat pembayaran (lunas & gagal), terbaru dulu |
 | GET | `/api/langganan/tagihan/:id` | Satu struk, untuk layar detail |
+| GET | `/api/panduan` | Seluruh panduan: tiap jenis + bendanya (ringkas: nama + sorot) |
+| GET | `/api/panduan/cari?kata=` | Cari benda panduan pilah; nama kategori ikut dicocokkan |
+| GET | `/api/panduan/tips?tanggal=` | Tip pilah hari itu; berotasi per tanggal, sama untuk semua warga |
+| GET | `/api/panduan/:jenis` | Satu jenis + benda yang sering dikira masuk sini |
 | GET | `/api/langganan/tagihan/:id/kuitansi` | Kuitansi `.txt` (lampiran), angka dari basis data |
 
 ### Gerbang langganan (booking)

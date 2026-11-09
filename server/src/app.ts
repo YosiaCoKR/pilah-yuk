@@ -5,6 +5,7 @@ import { ruteAlamat } from "./routes/alamat";
 import { ruteChannel } from "./routes/channel";
 import { ruteJadwal } from "./routes/jadwal";
 import { ruteLangganan } from "./routes/langganan";
+import { rutePanduan } from "./routes/panduan";
 import { rutePesanan } from "./routes/pesanan";
 import { ruteRiwayat } from "./routes/riwayat";
 import { ruteSlotWaktu } from "./routes/slot-waktu";
@@ -46,5 +47,5 @@ export function buatApp(
       return { pesan: "Ada gangguan di server. Coba lagi sebentar lagi." };
     })
     .get("/sehat", () => ({ status: "ok" }))
-    .group("/api", (app) => app.use(ruteAlamat(db)).use(ruteSlotWaktu(db)).use(rutePesanan(db)).use(ruteLangganan(db, gateway)).use(ruteJadwal(db)).use(ruteRiwayat(db)).use(ruteChannel(db)).use(ruteWebhookBayar(db, midtransServerKey)));
+    .group("/api", (app) => app.use(ruteAlamat(db)).use(ruteSlotWaktu(db)).use(rutePesanan(db)).use(ruteLangganan(db, gateway)).use(ruteJadwal(db)).use(ruteRiwayat(db)).use(ruteChannel(db)).use(rutePanduan(db)).use(ruteWebhookBayar(db, midtransServerKey)));
 }
