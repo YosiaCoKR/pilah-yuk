@@ -21,12 +21,29 @@ export type RingkasanLangganan = {
   planName: string | null;
   billingCycle: "mingguan" | "bulanan" | null;
   price: number | null;
+  /* Dua-duanya dikirim: layar status mencetak periodenya sebagai rentang
+     ("1 Nov – 1 Des"), dan tanggal mulai itu juga yang dipakai menghitung
+     kuota, jadi klien tidak perlu menduganya dari siklus paket. */
+  startDate: string | null;
   endDate: string | null;
   pickupQuota: number | null;
   pickupUsed: number;
   autoRenew: boolean;
+  /**
+   * Paket berjalan: status `aktif` DAN tanggalnya belum lewat. Kuota tidak
+   * dihitung.
+   *
+   * Terpisah dari `bolehPesan` karena tidak semua yang dijaga gerbang
+   * langganan memakai kuota hari ini: jadwal rutin berlaku untuk
+   * periode-periode BERIKUTNYA, jadi kuota yang habis hari ini tidak
+   * membuatnya sia-sia. Tanpa bendera ini, layar yang menjaga jadwal rutin
+   * harus menghitung ulang aturannya dari status + kuota — dan aturan yang
+   * dihitung dua kali adalah aturan yang kelak berbeda di satu tempat.
+   */
+  langgananAktif: boolean;
   /** Satu-satunya hal yang perlu dicek rute lain sebelum menerima pesanan. */
   bolehPesan: boolean;
+  /** Kenapa `bolehPesan` false. null saat memang boleh memesan. */
   alasan: string | null;
 };
 
@@ -88,10 +105,12 @@ export async function ringkasLangganan(
       planName: null,
       billingCycle: null,
       price: null,
+      startDate: null,
       endDate: null,
       pickupQuota: null,
       pickupUsed: 0,
       autoRenew: false,
+      langgananAktif: false,
       bolehPesan: false,
       alasan: "Belum ada langganan. Pilih paket dulu untuk mulai memesan.",
     };
@@ -136,10 +155,12 @@ export async function ringkasLangganan(
     planName: baris.planName,
     billingCycle: baris.billingCycle,
     price: baris.price,
+    startDate: baris.startDate,
     endDate: baris.endDate,
     pickupQuota: baris.pickupQuota,
     pickupUsed: terpakai,
     autoRenew: baris.autoRenew,
+    langgananAktif: status === "aktif",
     bolehPesan: status === "aktif" && !kuotaHabis,
     alasan,
   };

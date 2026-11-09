@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { Elysia, status, t } from "elysia";
 import { auth } from "../auth";
 import type { Db } from "../db";
@@ -21,6 +21,151 @@ const BadanBayar = t.Object({
 /** PY-INV-#### — kode yang disebut warga saat menanyakan pembayarannya. */
 const buatKodeTagihan = () =>
   `PY-INV-${Math.floor(1000 + Math.random() * 9000)}`;
+
+/**
+ * Riwayat hanya memuat yang `paid` dan `failed`.
+ *
+ * `pending` adalah tagihan yang sedang dibayar — tempatnya di layar bayar,
+ * bukan di riwayat; mencantumkannya di situ membuat warga mengira sudah
+ * membayar. `expired` adalah pilihan yang ditinggalkan warga sebelum
+ * membayar: tidak pernah ada uangnya, dan mencetaknya sebagai "gagal" akan
+ * membuat warga mencari saldo yang tidak pernah terpotong.
+ */
+const TERCATAT = ["paid", "failed"] as const;
+
+/**
+ * Kanal bayar seperti yang DIBACA warga, bukan seperti yang disimpan.
+ *
+ * `method` + `channel` dua kolom, tapi di struk warga mengenalinya sebagai
+ * satu kalimat ("Transfer BCA"). Dirangkai di server supaya kuitansi yang
+ * dirakit layar dan baris yang tampil di daftar menyebut hal yang sama.
+ */
+const labelMetode = (metode: string, channel: string | null) =>
+  metode === "qris"
+    ? "QRIS"
+    : metode === "va_bank"
+      ? `Transfer ${channel ?? "bank"}`
+      : (channel ?? "E-wallet");
+
+/**
+ * Baris tagihan + nama paket yang DITAGIH.
+ *
+ * Satu fungsi untuk daftar dan detail: bedanya hanya saringannya, dan join
+ * yang disalin dua kali adalah join yang kelak berbeda di satu tempat saja.
+ */
+const pilihTagihan = (db: Db, saring: SQL | undefined) =>
+  db
+    .select({
+      id: payments.id,
+      code: payments.code,
+      amount: payments.amount,
+      method: payments.method,
+      channel: payments.channel,
+      status: payments.status,
+      periodStart: payments.periodStart,
+      periodEnd: payments.periodEnd,
+      paidAt: payments.paidAt,
+      createdAt: payments.createdAt,
+      failureReason: payments.failureReason,
+      planName: subscriptionPlans.name,
+    })
+    .from(payments)
+    .innerJoin(subscriptionPlans, eq(payments.planId, subscriptionPlans.id))
+    .where(saring)
+    /* Percobaan terbaru lebih dulu — index `payments_user_dibuat_idx` memang
+       dibuat untuk urutan ini. */
+    .orderBy(desc(payments.createdAt));
+
+type BarisTagihan = Awaited<ReturnType<typeof pilihTagihan>>[number];
+
+/**
+ * Tanggal panjang Indonesia: "1 November 2026".
+ *
+ * Zona Jakarta disebut eksplisit — tanpa itu tanggalnya ikut zona mesin
+ * server, dan kuitansi yang dibuat jam 7 pagi WIB bisa tercetak tanggal
+ * sebelumnya kalau servernya berjalan di UTC.
+ */
+const tanggalPenuh = (iso: string) =>
+  new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(iso.length === 10 ? `${iso}T00:00:00+07:00` : iso));
+
+const rupiah = (n: number) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(n);
+
+const barisKuitansi = (label: string, nilai: string) =>
+  `${label.padEnd(10)}: ${nilai}`;
+
+/**
+ * Kuitansi langganan sebagai teks biasa.
+ *
+ * Teks, bukan PDF: warga mengirimnya lewat WhatsApp ke pengurus RW, dan di
+ * sana teks langsung terbaca di gelembung pesan tanpa pembaca PDF. Bentuknya
+ * sengaja sama dengan tanda terima pengangkutan (`teksBukti` di riwayat.ts).
+ *
+ * Bedanya dari kuitansi yang dirakit layar: angkanya datang dari basis data,
+ * bukan dari keadaan layar — jadi inilah berkas yang bisa dipertanggung-
+ * jawabkan kalau pembayaran warga perlu dicocokkan dengan pengurus.
+ *
+ * Tagihan GAGAL pun punya kuitansi. Justru itu yang dibawa warga saat
+ * saldonya terlanjur berkurang padahal langganannya tidak jalan, jadi
+ * sebabnya ikut tercetak dan "Tanggal" di situ berarti kapan percobaannya.
+ */
+function teksKuitansi(t: ReturnType<typeof bentukTagihan>) {
+  const lunas = t.status === "lunas";
+  return [
+    "KUITANSI LANGGANAN",
+    "Pilah Yuk",
+    "",
+    barisKuitansi("Kode", t.code),
+    barisKuitansi("Paket", t.planName),
+    barisKuitansi(
+      "Masa",
+      `${tanggalPenuh(t.periodStart)} sampai ${tanggalPenuh(t.periodEnd)}`,
+    ),
+    barisKuitansi("Jumlah", rupiah(t.amount)),
+    barisKuitansi("Cara bayar", t.method),
+    barisKuitansi(lunas ? "Tanggal" : "Dicoba", tanggalPenuh(t.paidAt)),
+    barisKuitansi("Status", lunas ? "Lunas" : "Gagal"),
+    /* null, bukan "" — baris kosong di atas memang pemisah yang disengaja,
+       jadi hanya baris opsional yang boleh hilang. */
+    t.failureReason ? barisKuitansi("Sebab", t.failureReason) : null,
+    "",
+    `Diterbitkan ${tanggalPenuh(new Date().toISOString())} oleh aplikasi Pilah Yuk.`,
+  ]
+    .filter((baris) => baris !== null)
+    .join("\n");
+}
+
+/** Bentuk yang dibaca layar riwayat & detail pembayaran. */
+function bentukTagihan(b: BarisTagihan) {
+  const lunas = b.status === "paid";
+  return {
+    id: b.id,
+    code: b.code,
+    planName: b.planName,
+    amount: b.amount,
+    method: labelMetode(b.method, b.channel),
+    /* Tagihan gagal tidak punya tanggal bayar — yang dicari warga di situ
+       adalah KAPAN percobaannya, dan itu tanggal tagihannya dibuat. */
+    paidAt: (lunas ? b.paidAt! : b.createdAt).toISOString(),
+    periodStart: b.periodStart,
+    periodEnd: b.periodEnd,
+    status: lunas ? ("lunas" as const) : ("gagal" as const),
+    /* Hanya terisi saat gagal: sebab pada tagihan lunas akan dibaca warga
+       sebagai tanda ada yang salah dengan pembayaran yang berhasil. Sebab
+       pada tagihan `expired` memang ada (lihat jalur /bayar), tapi barisnya
+       tidak pernah sampai ke sini. */
+    failureReason: lunas ? undefined : (b.failureReason ?? undefined),
+  };
+}
 
 export const ruteLangganan = (db: Db, gateway?: Gateway) =>
   new Elysia({ prefix: "/langganan" })
@@ -57,6 +202,138 @@ export const ruteLangganan = (db: Db, gateway?: Gateway) =>
     .get("/saya", async ({ penggunaId }) => ({
       data: await ringkasLangganan(db, penggunaId),
     }))
+
+    /**
+     * Nyalakan/matikan perpanjangan otomatis.
+     *
+     * Terpisah dari "bayar" karena warga menekannya langsung dari sakelar di
+     * layar langganan — mengubah pilihan ini tidak membuat tagihan dan tidak
+     * menggeser tanggal apa pun.
+     *
+     * Barisnya diambil dari `ringkasLangganan`, bukan dicari sendiri: warga
+     * boleh punya langganan aktif DAN satu baris menunggu bayar sekaligus,
+     * dan yang dimaksud sakelar itu adalah langganan yang BERLAKU. Memilih
+     * baris terbaru akan menyetel perpanjangan pada paket yang belum tentu
+     * jadi dibeli.
+     *
+     * ponytail: ini baru menyimpan pilihannya. Yang benar-benar menagih di
+     * tanggal berakhir adalah job perpanjangan — belum ada, jadi langganan
+     * dengan `autoRenew: true` tetap kedaluwarsa kalau tidak dibayar manual.
+     * Lihat juga `ringkasLangganan`, yang sudah memperlakukan tanggal sebagai
+     * penentu, bukan kolom status.
+     */
+    .put(
+      "/perpanjang-otomatis",
+      async ({ penggunaId, body }) => {
+        const langganan = await ringkasLangganan(db, penggunaId);
+        if (!langganan.id) {
+          return status(404, {
+            pesan: "Belum ada langganan. Pilih paket dulu.",
+          });
+        }
+
+        const [baris] = await db
+          .update(subscriptions)
+          .set({ autoRenew: body.aktif, updatedAt: new Date() })
+          .where(eq(subscriptions.id, langganan.id))
+          .returning({
+            id: subscriptions.id,
+            autoRenew: subscriptions.autoRenew,
+          });
+
+        return { data: { id: baris.id, autoRenew: baris.autoRenew } };
+      },
+      { body: t.Object({ aktif: t.Boolean() }) },
+    )
+
+    /**
+     * Riwayat pembayaran warga, percobaan terbaru lebih dulu.
+     *
+     * Dikembalikan utuh tanpa halaman: layar riwayat menjumlahkan sendiri
+     * "total dibayar" dari baris yang lunas, dan jumlah itu salah kalau
+     * servernya cuma mengirim sepotong. Satu warga paling banyak punya 12–52
+     * baris setahun, jadi belum ada yang perlu dipotong.
+     *
+     * `planName` ikut dari baris paket yang DITAGIH, bukan dari paket
+     * langganan sekarang — kuitansi lama harus tetap menyebut paket yang
+     * dibayar waktu itu meski warga sudah pindah paket.
+     */
+    .get("/tagihan", async ({ penggunaId }) => ({
+      data: (
+        await pilihTagihan(
+          db,
+          and(
+            eq(payments.userId, penggunaId),
+            inArray(payments.status, TERCATAT),
+          ),
+        )
+      ).map(bentukTagihan),
+    }))
+
+    /**
+     * Satu tagihan, untuk layar detail & kuitansi.
+     *
+     * Tagihan warga lain dijawab 404, bukan 403: nominal dan kanal bayar
+     * orang lain tidak boleh bisa dipastikan keberadaannya dengan menebak id.
+     * Tagihan `pending`/`expired` juga 404 — sama alasannya dengan daftar di
+     * atas, dan supaya tautan ke detail tidak pernah mencetak struk untuk
+     * uang yang belum masuk.
+     */
+    .get(
+      "/tagihan/:id",
+      async ({ penggunaId, params }) => {
+        const [baris] = await pilihTagihan(
+          db,
+          and(
+            eq(payments.id, params.id),
+            eq(payments.userId, penggunaId),
+            inArray(payments.status, TERCATAT),
+          ),
+        );
+
+        if (!baris) return status(404, { pesan: "Tagihan tidak ditemukan." });
+        return { data: bentukTagihan(baris) };
+      },
+      { params: t.Object({ id: t.String({ format: "uuid" }) }) },
+    )
+
+    /**
+     * Kuitansi satu tagihan sebagai berkas teks.
+     *
+     * Dikirim sebagai lampiran, bukan JSON, supaya tautannya bisa dibuka
+     * langsung dari peramban — tidak ada kode di sisi warga yang perlu
+     * merakit berkas lagi, dan angkanya tidak bisa berbeda dari yang
+     * tercatat.
+     *
+     * Saringannya sama dengan detail: milik sendiri, dan hanya yang `paid`
+     * atau `failed`. Kuitansi untuk tagihan yang belum dibayar adalah bukti
+     * palsu bahwa uangnya sudah masuk.
+     */
+    .get(
+      "/tagihan/:id/kuitansi",
+      async ({ penggunaId, params, set }) => {
+        const [baris] = await pilihTagihan(
+          db,
+          and(
+            eq(payments.id, params.id),
+            eq(payments.userId, penggunaId),
+            inArray(payments.status, TERCATAT),
+          ),
+        );
+
+        if (!baris) return status(404, { pesan: "Tagihan tidak ditemukan." });
+
+        const tagihan = bentukTagihan(baris);
+        /* Kode datang dari basis data, tapi tetap dibersihkan: apa pun yang
+           masuk ke header tidak boleh bisa menyelundupkan tanda kutip atau
+           ganti baris. */
+        const nama = `kuitansi-${tagihan.code.replace(/[^\w.-]/g, "")}.txt`;
+        set.headers["content-type"] = "text/plain; charset=utf-8";
+        set.headers["content-disposition"] = `attachment; filename="${nama}"`;
+        return teksKuitansi(tagihan);
+      },
+      { params: t.Object({ id: t.String({ format: "uuid" }) }) },
+    )
 
     /**
      * Buat tagihan untuk satu paket.

@@ -8,7 +8,7 @@ Elysia di atas runtime Bun, Drizzle ORM ke Supabase Postgres.
 cp .env.example .env     # isi DATABASE_URL dari Supabase
 npm install
 npm run db:migrate       # terapkan migrasi
-npm run db:seed          # kategori sampah, slot jam, paket langganan
+npm run db:seed          # kategori sampah, benda panduan pilah, slot jam, paket langganan
 npm run dev              # http://localhost:3001
 ```
 
@@ -45,7 +45,28 @@ Semua endpoint butuh identitas pemanggil.
 | POST | `/api/pesanan` | Kirim permintaan jemput |
 | GET | `/api/pesanan` | Riwayat pesanan warga |
 | PUT | `/api/pesanan/:id/batal` | Batalkan (hanya saat masih menunggu) |
-| GET | `/api/langganan/saya` | Status langganan + sisa kuota |
+| GET | `/api/langganan/paket` | Daftar paket, termurah lebih dulu |
+| GET | `/api/langganan/saya` | Status langganan: periode berjalan, sisa kuota, gerbang booking |
+| PUT | `/api/langganan/perpanjang-otomatis` | Nyalakan/matikan perpanjangan otomatis |
+| POST | `/api/langganan/bayar` | Buat tagihan satu paket (baru / ganti / perpanjang) |
+| GET | `/api/langganan/tagihan` | Riwayat pembayaran (lunas & gagal), terbaru dulu |
+| GET | `/api/langganan/tagihan/:id` | Satu struk, untuk layar detail |
+| GET | `/api/langganan/tagihan/:id/kuitansi` | Kuitansi `.txt` (lampiran), angka dari basis data |
+
+### Gerbang langganan (booking)
+
+`GET /api/langganan/saya` adalah endpoint cek sebelum menjadwalkan jemput —
+tidak ada endpoint cek terpisah, supaya aturannya tidak hidup di dua tempat.
+Dua bendera, karena tidak semua yang dijaga memakai kuota hari ini:
+
+| Bendera | Artinya | Dipakai |
+|---|---|---|
+| `langgananAktif` | Paket berjalan (status `aktif` + tanggal belum lewat). Kuota diabaikan. | Jadwal rutin — berlaku untuk periode berikutnya |
+| `bolehPesan` | `langgananAktif` DAN kuota periode ini masih ada | Pesanan sekali jalan |
+
+`alasan` menyebut kenapa `bolehPesan` false (belum bayar / kedaluwarsa / kuota
+habis), `null` saat memang boleh. Aturannya ditegakkan lagi di server pada
+`POST /api/pesanan` (→ 402) — tombol di layar bisa dilewati.
 
 ### Kode status
 

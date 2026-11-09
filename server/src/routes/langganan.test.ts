@@ -59,6 +59,7 @@ const pesan = (alamatId: string, slotId: string) => ({
   assert.equal(r.status, 200);
   assert.equal(r.body.data.status, "belum_ada");
   assert.equal(r.body.data.bolehPesan, false);
+  assert.equal(r.body.data.langgananAktif, false);
   lulus("belum punya langganan → status belum_ada, bolehPesan false");
 
   r = await panggil("POST", "/api/pesanan", {
@@ -76,6 +77,7 @@ const pesan = (alamatId: string, slotId: string) => ({
   let r = await panggil("GET", "/api/langganan/saya", { sebagai: WARGA });
   assert.equal(r.body.data.status, "aktif");
   assert.equal(r.body.data.bolehPesan, true);
+  assert.equal(r.body.data.langgananAktif, true);
   assert.equal(r.body.data.pickupQuota, 8);
   assert.equal(r.body.data.pickupUsed, 0);
   assert.equal(r.body.data.alasan, null);
@@ -101,6 +103,7 @@ const pesan = (alamatId: string, slotId: string) => ({
   let r = await panggil("GET", "/api/langganan/saya", { sebagai: WARGA });
   assert.equal(r.body.data.status, "menunggu_bayar");
   assert.equal(r.body.data.bolehPesan, false);
+  assert.equal(r.body.data.langgananAktif, false);
   assert.match(r.body.data.alasan, /[Pp]embayaran/);
   lulus("menunggu_bayar → bolehPesan false, alasan menyebut pembayaran");
 
@@ -127,6 +130,11 @@ const pesan = (alamatId: string, slotId: string) => ({
     "tanggal yang menentukan, bukan kolom status",
   );
   assert.equal(r.body.data.bolehPesan, false);
+  assert.equal(
+    r.body.data.langgananAktif,
+    false,
+    "tanggal lewat = tidak berjalan, walau kuotanya belum tersentuh",
+  );
   lulus("end_date lewat walau kolom masih 'aktif' → kedaluwarsa");
 
   r = await panggil("POST", "/api/pesanan", {
@@ -151,7 +159,11 @@ const pesan = (alamatId: string, slotId: string) => ({
   assert.equal(r.body.data.pickupUsed, 1);
   assert.equal(r.body.data.bolehPesan, false);
   assert.match(r.body.data.alasan, /[Kk]uota/);
-  lulus("kuota habis → bolehPesan false, alasan menyebut kuota");
+  /* Paketnya MASIH berjalan — yang habis cuma kuota periode ini. Inilah satu
+     keadaan yang membedakan kedua bendera, dan yang dipakai layar jadwal
+     rutin: jadwalnya berlaku untuk periode berikutnya, jadi tidak ditahan. */
+  assert.equal(r.body.data.langgananAktif, true);
+  lulus("kuota habis → bolehPesan false tapi langgananAktif tetap true");
 
   r = await panggil("POST", "/api/pesanan", {
     sebagai: WARGA,
@@ -471,6 +483,333 @@ const pesan = (alamatId: string, slotId: string) => ({
   const r = await panggil("GET", "/api/langganan/saya");
   assert.equal(r.status, 401);
   lulus("GET /langganan/saya tanpa identitas → 401");
+  await klien.close();
+}
+
+/* --- status: periode berjalan dikirim utuh --- */
+{
+  const { panggil, klien } = await skenario({
+    mulai: tanggalISO(-10),
+    sampai: tanggalISO(20),
+  });
+  const r = await panggil("GET", "/api/langganan/saya", { sebagai: WARGA });
+  assert.equal(r.status, 200);
+  /* Layar status mencetak rentangnya, jadi dua-duanya harus ada — tanpa
+     startDate layar cuma bisa menduga dari siklus paket. */
+  assert.equal(r.body.data.startDate, tanggalISO(-10));
+  assert.equal(r.body.data.endDate, tanggalISO(20));
+  assert.equal(r.body.data.autoRenew, false);
+  lulus("GET /langganan/saya mengirim startDate + endDate periode berjalan");
+  await klien.close();
+}
+
+/* --- perpanjang otomatis --- */
+{
+  const alat = await skenario();
+  const { panggil, klien, db, schema, langganan } = alat;
+
+  let r = await panggil("PUT", "/api/langganan/perpanjang-otomatis", {
+    sebagai: WARGA,
+    body: { aktif: true },
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.autoRenew, true);
+  /* Yang berubah harus baris langganan yang BERLAKU, bukan baris lain. */
+  assert.equal(r.body.data.id, langganan!.langganan.id);
+
+  r = await panggil("GET", "/api/langganan/saya", { sebagai: WARGA });
+  assert.equal(r.body.data.autoRenew, true);
+  lulus("PUT perpanjang-otomatis menyala → terbaca di status");
+
+  r = await panggil("PUT", "/api/langganan/perpanjang-otomatis", {
+    sebagai: WARGA,
+    body: { aktif: false },
+  });
+  assert.equal(r.body.data.autoRenew, false);
+  lulus("PUT perpanjang-otomatis mati lagi");
+
+  /* Warga lain tidak boleh tersenggol. */
+  const LAIN = "22222222-2222-2222-2222-222222222222";
+  await db
+    .insert(schema.users)
+    .values({ id: LAIN, fullName: "Pak Budi", phone: "0812" });
+  r = await panggil("PUT", "/api/langganan/perpanjang-otomatis", {
+    sebagai: LAIN,
+    body: { aktif: true },
+  });
+  assert.equal(r.status, 404);
+  lulus("warga tanpa langganan → 404, bukan menyetel langganan orang lain");
+
+  r = await panggil("PUT", "/api/langganan/perpanjang-otomatis", {
+    body: { aktif: true },
+  });
+  assert.equal(r.status, 401);
+  lulus("PUT perpanjang-otomatis tanpa identitas → 401");
+  await klien.close();
+}
+
+/* --- perpanjang otomatis menempel ke langganan yang berlaku, bukan ke
+       baris menunggu bayar yang periodenya berakhir paling belakang --- */
+{
+  const alat = await skenario();
+  const { panggil, klien, db, schema, langganan } = alat;
+  const [menunggu] = await db
+    .insert(schema.subscriptions)
+    .values({
+      userId: WARGA,
+      planId: langganan!.paket.id,
+      status: "menunggu_bayar",
+      startDate: tanggalISO(20),
+      endDate: tanggalISO(50),
+    })
+    .returning();
+
+  const r = await panggil("PUT", "/api/langganan/perpanjang-otomatis", {
+    sebagai: WARGA,
+    body: { aktif: true },
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.id, langganan!.langganan.id);
+  assert.notEqual(r.body.data.id, menunggu.id);
+  lulus("sakelar menempel ke langganan berlaku, bukan ke tagihan menggantung");
+  await klien.close();
+}
+
+/* --- riwayat & detail pembayaran --- */
+{
+  const alat = await skenario();
+  const { panggil, klien, db, schema, langganan } = alat;
+  const umum = {
+    userId: WARGA,
+    subscriptionId: langganan!.langganan.id,
+    planId: langganan!.paket.id,
+    amount: 45000,
+    periodStart: tanggalISO(-40),
+    periodEnd: tanggalISO(-10),
+  };
+
+  const [lunasLama] = await db
+    .insert(schema.payments)
+    .values({
+      ...umum,
+      code: "PY-INV-1001",
+      method: "qris",
+      status: "paid",
+      paidAt: new Date("2026-10-01T03:00:00Z"),
+      createdAt: new Date("2026-10-01T02:00:00Z"),
+    })
+    .returning();
+  const [gagal] = await db
+    .insert(schema.payments)
+    .values({
+      ...umum,
+      code: "PY-INV-1002",
+      method: "ewallet",
+      channel: "GoPay",
+      status: "failed",
+      failureReason: "Saldo GoPay tidak cukup.",
+      createdAt: new Date("2026-10-15T02:00:00Z"),
+    })
+    .returning();
+  const [lunasBaru] = await db
+    .insert(schema.payments)
+    .values({
+      ...umum,
+      code: "PY-INV-1003",
+      method: "va_bank",
+      channel: "BCA",
+      status: "paid",
+      paidAt: new Date("2026-11-01T03:00:00Z"),
+      createdAt: new Date("2026-11-01T02:00:00Z"),
+    })
+    .returning();
+  /* Dua yang TIDAK boleh muncul: satu masih dibayar, satu ditinggalkan. */
+  const [menggantung] = await db
+    .insert(schema.payments)
+    .values({ ...umum, code: "PY-INV-1004", method: "qris", status: "pending" })
+    .returning();
+  await db.insert(schema.payments).values({
+    ...umum,
+    code: "PY-INV-1005",
+    method: "qris",
+    status: "expired",
+  });
+
+  let r = await panggil("GET", "/api/langganan/tagihan", { sebagai: WARGA });
+  assert.equal(r.status, 200);
+  assert.deepEqual(
+    r.body.data.map((t: any) => t.code),
+    ["PY-INV-1003", "PY-INV-1002", "PY-INV-1001"],
+    "terbaru lebih dulu; pending & expired tidak ikut",
+  );
+  lulus("GET /langganan/tagihan: hanya lunas & gagal, terbaru lebih dulu");
+
+  /* Kanal bayar dirangkai jadi satu kalimat seperti yang dibaca warga. */
+  assert.deepEqual(
+    r.body.data.map((t: any) => t.method),
+    ["Transfer BCA", "GoPay", "QRIS"],
+  );
+  lulus("label kanal bayar: QRIS / GoPay / Transfer BCA");
+
+  const [baru, tidakJadi] = r.body.data;
+  assert.equal(baru.status, "lunas");
+  assert.equal(baru.planName, "Bulanan Rumah Tangga");
+  assert.equal(baru.amount, 45000);
+  assert.equal(baru.failureReason, undefined);
+  assert.equal(baru.paidAt, "2026-11-01T03:00:00.000Z");
+  assert.equal(tidakJadi.status, "gagal");
+  assert.equal(tidakJadi.failureReason, "Saldo GoPay tidak cukup.");
+  /* Tagihan gagal tidak punya tanggal bayar; yang dicetak kapan percobaannya. */
+  assert.equal(tidakJadi.paidAt, "2026-10-15T02:00:00.000Z");
+  lulus("bentuk baris cocok dengan yang dibaca layar riwayat & kuitansi");
+
+  r = await panggil("GET", `/api/langganan/tagihan/${lunasLama.id}`, {
+    sebagai: WARGA,
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.code, "PY-INV-1001");
+  assert.equal(r.body.data.method, "QRIS");
+  assert.equal(r.body.data.periodStart, tanggalISO(-40));
+  assert.equal(r.body.data.periodEnd, tanggalISO(-10));
+  lulus("GET /langganan/tagihan/:id mengirim satu struk utuh");
+
+  r = await panggil("GET", `/api/langganan/tagihan/${gagal.id}`, {
+    sebagai: WARGA,
+  });
+  assert.equal(r.body.data.failureReason, "Saldo GoPay tidak cukup.");
+  lulus("detail tagihan gagal menyebut sebabnya");
+
+  /* Tagihan yang masih dibayar tidak punya struk. */
+  r = await panggil("GET", `/api/langganan/tagihan/${menggantung.id}`, {
+    sebagai: WARGA,
+  });
+  assert.equal(r.status, 404);
+  lulus("tagihan pending → 404, bukan struk untuk uang yang belum masuk");
+
+  /* Warga lain: 404, bukan 403 — keberadaannya pun tidak dibocorkan. */
+  const LAIN = "33333333-3333-3333-3333-333333333333";
+  await db
+    .insert(schema.users)
+    .values({ id: LAIN, fullName: "Pak Dadang", phone: "0813" });
+  r = await panggil("GET", `/api/langganan/tagihan/${lunasBaru.id}`, {
+    sebagai: LAIN,
+  });
+  assert.equal(r.status, 404);
+  r = await panggil("GET", "/api/langganan/tagihan", { sebagai: LAIN });
+  assert.deepEqual(r.body.data, []);
+  lulus("tagihan warga lain → 404 dan tidak muncul di daftarnya");
+
+  r = await panggil("GET", "/api/langganan/tagihan");
+  assert.equal(r.status, 401);
+  r = await panggil("GET", `/api/langganan/tagihan/${lunasBaru.id}`);
+  assert.equal(r.status, 401);
+  lulus("riwayat & detail tagihan tanpa identitas → 401");
+
+  r = await panggil("GET", "/api/langganan/tagihan/bukan-uuid", {
+    sebagai: WARGA,
+  });
+  assert.equal(r.status, 422);
+  lulus("id bukan uuid → 422");
+  await klien.close();
+}
+
+/* --- kuitansi bukti pembayaran --- */
+{
+  const alat = await skenario();
+  const { klien, db, schema, app, langganan } = alat;
+  const umum = {
+    userId: WARGA,
+    subscriptionId: langganan!.langganan.id,
+    planId: langganan!.paket.id,
+    amount: 45000,
+    periodStart: "2026-10-02",
+    periodEnd: "2026-11-01",
+  };
+  const [lunas] = await db
+    .insert(schema.payments)
+    .values({
+      ...umum,
+      code: "PY-INV-2001",
+      method: "va_bank",
+      channel: "BCA",
+      status: "paid",
+      paidAt: new Date("2026-10-02T03:00:00Z"),
+    })
+    .returning();
+  const [gagal] = await db
+    .insert(schema.payments)
+    .values({
+      ...umum,
+      code: "PY-INV-2002",
+      method: "ewallet",
+      channel: "GoPay",
+      status: "failed",
+      failureReason: "Saldo GoPay tidak cukup.",
+      createdAt: new Date("2026-10-03T03:00:00Z"),
+    })
+    .returning();
+  const [menggantung] = await db
+    .insert(schema.payments)
+    .values({ ...umum, code: "PY-INV-2003", method: "qris", status: "pending" })
+    .returning();
+
+  /** Kuitansi itu berkas, bukan JSON — jadi dibaca mentah. */
+  const unduh = (id: string, sebagai?: string) =>
+    app.handle(
+      new Request(`http://local/api/langganan/tagihan/${id}/kuitansi`, {
+        headers: sebagai ? { "x-user-id": sebagai } : {},
+      }),
+    );
+
+  let res = await unduh(lunas.id, WARGA);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type")!, /^text\/plain/);
+  assert.equal(
+    res.headers.get("content-disposition"),
+    'attachment; filename="kuitansi-PY-INV-2001.txt"',
+  );
+  const teks = await res.text();
+  assert.match(teks, /^KUITANSI LANGGANAN\nPilah Yuk\n\n/);
+  assert.match(teks, /Kode {6}: PY-INV-2001/);
+  assert.match(teks, /Paket {5}: Bulanan Rumah Tangga/);
+  /* Nominal dari basis data, dirupiahkan di server — ini angka yang dicocokkan
+     pengurus, jadi tidak boleh ikut keadaan layar. */
+  assert.match(teks, /Jumlah {4}: Rp\s?45\.000/);
+  assert.match(teks, /Cara bayar: Transfer BCA/);
+  assert.match(teks, /Masa {6}: 2 Oktober 2026 sampai 1 November 2026/);
+  assert.match(teks, /Status {4}: Lunas/);
+  assert.doesNotMatch(teks, /Sebab/);
+  lulus("kuitansi lunas: lampiran teks, angka & tanggal dari basis data");
+
+  /* Zona Jakarta, bukan zona mesin server: 03:00 UTC = 10:00 WIB, tanggal
+     tetap 2 Oktober walau servernya berjalan di UTC. */
+  assert.match(teks, /Tanggal {3}: 2 Oktober 2026/);
+  lulus("tanggal kuitansi dihitung di zona Jakarta");
+
+  res = await unduh(gagal.id, WARGA);
+  assert.equal(res.status, 200);
+  const teksGagal = await res.text();
+  assert.match(teksGagal, /Status {4}: Gagal/);
+  assert.match(teksGagal, /Sebab {5}: Saldo GoPay tidak cukup\./);
+  /* "Tanggal" pada tagihan gagal akan dibaca sebagai bukti sudah membayar. */
+  assert.match(teksGagal, /Dicoba {4}: 3 Oktober 2026/);
+  assert.doesNotMatch(teksGagal, /Tanggal/);
+  lulus("kuitansi gagal menyebut sebab & kapan percobaannya, bukan 'Tanggal'");
+
+  /* Belum dibayar → tidak ada kuitansi. */
+  res = await unduh(menggantung.id, WARGA);
+  assert.equal(res.status, 404);
+  lulus("kuitansi tagihan pending → 404, bukan bukti uang yang belum masuk");
+
+  const LAIN = "44444444-4444-4444-4444-444444444444";
+  await db
+    .insert(schema.users)
+    .values({ id: LAIN, fullName: "Bu Siti", phone: "0814" });
+  res = await unduh(lunas.id, LAIN);
+  assert.equal(res.status, 404);
+  res = await unduh(lunas.id);
+  assert.equal(res.status, 401);
+  lulus("kuitansi warga lain → 404; tanpa identitas → 401");
   await klien.close();
 }
 
