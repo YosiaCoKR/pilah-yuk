@@ -1,6 +1,6 @@
 /** Jalankan: npm run test:akun */
 import assert from "node:assert/strict";
-import { normalkanHp, periksaPendaftaran } from "./akun";
+import { normalkanHp, periksaMasuk, periksaPendaftaran } from "./akun";
 import { HP_TERDAFTAR } from "./mock";
 
 /* Semua cara menulis satu nomor harus jatuh ke bentuk yang sama, kalau tidak
@@ -28,3 +28,23 @@ assert.ok(
 assert.deepEqual(periksaPendaftaran({ ...sah, hp: "081234567890" }), {});
 
 console.log("akun: semua pemeriksaan lulus");
+
+/* Halaman masuk: aturan nomor harus identik dengan pendaftaran. */
+
+const masukSah = { hp: "0812 3456 7890", sandi: "rahasia123" };
+assert.deepEqual(periksaMasuk(masukSah, HP_TERDAFTAR), {});
+/* Nomor terdaftar tetap dikenali walau ditulis dengan awalan +62. */
+assert.deepEqual(
+  periksaMasuk({ ...masukSah, hp: "+62 812-3456-7890" }, HP_TERDAFTAR),
+  {},
+);
+/* Nomor yang belum punya akun ditolak — kalau tidak, warga baru terjebak di
+   layar masuk tanpa tahu harus mendaftar. */
+assert.ok(periksaMasuk({ ...masukSah, hp: "0899 0000 0000" }, HP_TERDAFTAR).hp);
+assert.ok(periksaMasuk({ hp: "", sandi: "" }).hp);
+assert.ok(periksaMasuk({ ...masukSah, sandi: "pendek1" }).sandi);
+/* Tanpa daftar pembanding, pemeriksaan "belum terdaftar" harus diam. */
+assert.deepEqual(periksaMasuk({ ...masukSah, hp: "0899 0000 0000" }), {});
+
+console.log("masuk: semua pemeriksaan lulus");
+

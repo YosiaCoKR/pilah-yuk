@@ -51,3 +51,37 @@ export function periksaPendaftaran(
 
   return g;
 }
+
+export type IsiMasuk = { hp: string; sandi: string };
+export type GalatMasuk = Partial<Record<keyof IsiMasuk, string>>;
+
+/**
+ * Aturan halaman masuk. Memakai `normalkanHp` yang sama dengan pendaftaran —
+ * nomor yang baru didaftarkan sebagai "+62 812…" harus bisa dipakai masuk
+ * meski ditulis "0812…".
+ *
+ * ponytail: pencocokan ke daftar nomor ini cuma untuk data tiruan. API masuk
+ * sungguhan mengembalikan satu pesan gabungan ("nomor atau sandi salah")
+ * supaya tidak membocorkan nomor mana yang sudah terdaftar.
+ */
+export function periksaMasuk(
+  isi: IsiMasuk,
+  /** Nomor yang punya akun — dari data tiruan, nanti dijawab server. */
+  terdaftar: readonly string[] = [],
+): GalatMasuk {
+  const g: GalatMasuk = {};
+
+  const hp = normalkanHp(isi.hp);
+  if (!hp) {
+    g.hp = "Masuk pakai nomor HP yang dipakai saat mendaftar.";
+  } else if (!/^08\d{8,12}$/.test(hp)) {
+    g.hp = "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
+  } else if (terdaftar.length && !terdaftar.includes(hp)) {
+    g.hp = "Nomor ini belum punya akun. Daftar dulu, gratis.";
+  }
+
+  if (!isi.sandi) g.sandi = "Kata sandinya belum diisi.";
+  else if (isi.sandi.length < 8) g.sandi = "Sandi minimal 8 karakter.";
+
+  return g;
+}

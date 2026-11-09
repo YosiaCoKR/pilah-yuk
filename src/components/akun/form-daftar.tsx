@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import Link from "next/link";
 import { periksaPendaftaran, type IsiDaftar } from "@/lib/akun";
 import { HP_TERDAFTAR } from "@/lib/mock";
 import { Isian, Kartu } from "../primitif";
@@ -80,8 +81,10 @@ export function FormDaftar() {
 
       <p className="text-center text-[13px] text-ink-2">
         Sudah punya akun?{" "}
-        <span className="font-semibold text-ink">Masuk</span> pakai nomor yang
-        sama.
+        <Link href="/masuk" className="font-semibold text-ink underline">
+          Masuk
+        </Link>{" "}
+        pakai nomor yang sama.
       </p>
     </form>
   );
