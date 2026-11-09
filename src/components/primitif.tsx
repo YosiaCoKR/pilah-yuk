@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { WASTE_COLOR, categoryByKey } from "@/lib/mock";
 import type { WasteKey } from "@/lib/types";
 
@@ -100,5 +100,84 @@ export function ChipSampah({
       />
       {kategori.name}
     </span>
+  );
+}
+
+/**
+ * Labelled form field with help text and an error line. Help text is always
+ * present, not a tooltip — warga reading on a cheap phone should never have
+ * to hover to learn what a field wants.
+ */
+export function Isian({
+  id,
+  label,
+  bantuan,
+  value,
+  onChange,
+  placeholder,
+  baris,
+  opsional,
+  galat,
+  ...sisa
+}: {
+  id: string;
+  label: string;
+  bantuan: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  baris?: number;
+  opsional?: boolean;
+  galat?: string;
+} & Omit<
+  ComponentProps<"input">,
+  "id" | "value" | "onChange" | "placeholder" | "className"
+>) {
+  const kelas = `w-full rounded-kartu border bg-paper p-3 text-[15px] placeholder:text-ink-3 ${
+    galat ? "border-alarm" : "border-line"
+  }`;
+  const bantuanId = `${id}-bantuan`;
+  const galatId = `${id}-galat`;
+
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-[14px] font-semibold">
+        {label}
+        {opsional && (
+          <span className="ml-1.5 font-normal text-ink-3">(boleh kosong)</span>
+        )}
+      </label>
+      <p id={bantuanId} className="text-[13px] leading-snug text-ink-2">
+        {bantuan}
+      </p>
+      {baris ? (
+        <textarea
+          id={id}
+          rows={baris}
+          value={value}
+          aria-invalid={!!galat}
+          aria-describedby={galat ? `${bantuanId} ${galatId}` : bantuanId}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`${kelas} resize-none`}
+        />
+      ) : (
+        <input
+          id={id}
+          value={value}
+          aria-invalid={!!galat}
+          aria-describedby={galat ? `${bantuanId} ${galatId}` : bantuanId}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`${kelas} min-h-12`}
+          {...sisa}
+        />
+      )}
+      {galat && (
+        <p id={galatId} className="text-[13px] font-medium text-alarm">
+          {galat}
+        </p>
+      )}
+    </div>
   );
 }

@@ -800,3 +800,6 @@ export function jarakTerbaca(meter: number) {
   if (meter < 1000) return `${meter} m`;
   return `${(meter / 1000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} km`;
 }
+
+/* Nomor yang dianggap sudah punya akun, buat menguji layar pendaftaran. */
+export const HP_TERDAFTAR = ["081234567890", "085600112233"];

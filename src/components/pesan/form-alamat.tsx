@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import type { Address } from "@/lib/types";
+import { Isian } from "../primitif";
 import { Tombol } from "../tombol";
 
 type Isi = { label: string; fullAddress: string; landmark: string };
@@ -124,74 +125,5 @@ export function FormAlamat({
         </Tombol>
       </div>
     </form>
-  );
-}
-
-function Isian({
-  id,
-  label,
-  bantuan,
-  value,
-  onChange,
-  placeholder,
-  baris,
-  opsional,
-  galat,
-}: {
-  id: string;
-  label: string;
-  bantuan: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  baris?: number;
-  opsional?: boolean;
-  galat?: string;
-}) {
-  const kelas = `w-full rounded-kartu border bg-paper p-3 text-[15px] placeholder:text-ink-3 ${
-    galat ? "border-alarm" : "border-line"
-  }`;
-  const bantuanId = `${id}-bantuan`;
-  const galatId = `${id}-galat`;
-
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-[14px] font-semibold">
-        {label}
-        {opsional && (
-          <span className="ml-1.5 font-normal text-ink-3">(boleh kosong)</span>
-        )}
-      </label>
-      <p id={bantuanId} className="text-[13px] leading-snug text-ink-2">
-        {bantuan}
-      </p>
-      {baris ? (
-        <textarea
-          id={id}
-          rows={baris}
-          value={value}
-          aria-invalid={!!galat}
-          aria-describedby={galat ? `${bantuanId} ${galatId}` : bantuanId}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className={`${kelas} resize-none`}
-        />
-      ) : (
-        <input
-          id={id}
-          value={value}
-          aria-invalid={!!galat}
-          aria-describedby={galat ? `${bantuanId} ${galatId}` : bantuanId}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className={`${kelas} min-h-12`}
-        />
-      )}
-      {galat && (
-        <p id={galatId} className="text-[13px] font-medium text-alarm">
-          {galat}
-        </p>
-      )}
-    </div>
   );
 }
