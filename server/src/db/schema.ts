@@ -449,8 +449,97 @@ export const wasteCategories = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     handlingTip: text("handling_tip"),
+    /*
+      Urutan tetap: organik, plastik, kertas, lalu campuran.
+
+      Bukan alfabet — "campuran" berarti belum terpilah, dan menaruhnya di
+      baris pertama panduan mengajarkan kebalikan dari maksud halaman ini.
+      Juga tidak ada ladder alami seperti harga pada paket langganan, jadi
+      urutannya memang harus disimpan.
+    */
+    sortOrder: smallint("sort_order").notNull().default(0),
   },
-  (t) => [uniqueIndex("waste_categories_slug_idx").on(t.slug)],
+  (t) => [
+    uniqueIndex("waste_categories_slug_idx").on(t.slug),
+    index("waste_categories_urut_idx").on(t.sortOrder),
+    /* Panduan pilah itu bacaan umum — semua warga melihat daftar yang sama.
+       RLS tetap dinyalakan: tabel di skema `public` tanpa kebijakan terbaca
+       utuh lewat PostgREST, dan "boleh dibaca semua" sebaiknya tertulis
+       sebagai keputusan, bukan tersirat dari tidak adanya kebijakan. */
+    pgPolicy("waste_categories_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
+  ],
+);
+
+/**
+ * Benda sehari-hari dan tong tujuannya.
+ *
+ * Satu daftar untuk dua tempat: contoh di kartu jenis dan hasil pencarian.
+ * Dipisah jadi dua tabel, keduanya akan saling bertentangan — dan warga yang
+ * menemukan dua jawaban berbeda untuk "styrofoam masuk mana" berhenti
+ * mempercayai panduannya.
+ *
+ * Pencarian memakai nama benda + nama kategorinya (warga yang mengetik
+ * "plastik" sedang bertanya apa saja yang masuk plastik). Kolom `keywords`
+ * yang disebut PRD karena itu tidak dibuat: kategorinya sudah di join yang
+ * sama, dan kolom kata kunci kedua hanya akan jadi tempat ejaan yang lupa
+ * diperbarui. `is_recyclable` juga tidak — tidak ada layar yang
+ * menanyakannya, dan jawaban "boleh didaur ulang" tanpa penjelasan justru
+ * bertentangan dengan `note` yang sudah menjelaskan kasus-kasus sulitnya.
+ */
+export const wasteGuideItems = pgTable(
+  "waste_guide_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /* restrict, bukan cascade: kategori yang masih punya benda tidak boleh
+       hilang begitu saja — yang hilang bersamanya adalah jawaban yang sudah
+       dibaca warga. */
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => wasteCategories.id, { onDelete: "restrict" }),
+    /* Huruf kecil, seperti warga mengetiknya: "kulit telur", "styrofoam". */
+    name: text("name").notNull(),
+    /* Alasan singkat, HANYA untuk benda yang jawabannya bikin kaget. Catatan
+       di setiap benda membuat yang penting tenggelam. */
+    note: text("note"),
+    /* Ikut tampil sebagai contoh di kartu jenis: yang paling sering bikin
+       ragu di depan tong. */
+    isHighlighted: boolean("is_highlighted").notNull().default(false),
+    /*
+      Tong yang benda ini SERING DIKIRA tempatnya, padahal bukan.
+
+      Kolom sendiri, bukan ditebak dari kata di `note`: catatan amplop
+      ("jendela plastiknya disobek dulu") menyebut plastik tanpa ada yang
+      pernah mengira amplop itu plastik — dan panduan yang salah menaruh
+      benda di tong yang salah.
+    */
+    mistakenForId: uuid("mistaken_for_id").references(
+      () => wasteCategories.id,
+      { onDelete: "set null" },
+    ),
+  },
+  (t) => [
+    /* Nama benda unik: dua baris "styrofoam" adalah dua jawaban. */
+    uniqueIndex("waste_guide_items_nama_idx").on(t.name),
+    // Contoh per kartu jenis: yang disorot lebih dulu.
+    index("waste_guide_items_kategori_idx").on(t.categoryId, t.isHighlighted),
+    // "Sering dikira masuk sini" di halaman satu jenis.
+    index("waste_guide_items_dikira_idx").on(t.mistakenForId),
+    /* Benda tidak boleh "sering dikira" masuk tongnya sendiri — itu bukan
+       salah kira, dan barisnya akan muncul di daftarnya sendiri. */
+    check(
+      "waste_guide_items_dikira_beda",
+      sql`${t.mistakenForId} is null or ${t.mistakenForId} <> ${t.categoryId}`,
+    ),
+    pgPolicy("waste_guide_items_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
+  ],
 );
 
 /**

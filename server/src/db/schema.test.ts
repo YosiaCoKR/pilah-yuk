@@ -63,6 +63,7 @@ assert.deepEqual(nama, [
   "time_slots",
   "users",
   "waste_categories",
+  "waste_guide_items",
 ]);
 console.log(`✓ ${nama.length} tabel terbentuk`);
 
@@ -661,6 +662,61 @@ const sisa = await db.query<{ n: number }>(
 );
 assert.equal(sisa.rows[0].n, 0, "pickup harus ikut terhapus bersama user");
 console.log("✓ hapus user men-cascade ke pickups");
+
+/* --- panduan pilah sampah --- */
+const kOrganik = await db.query<{ id: string }>(
+  `insert into waste_categories (slug, name, sort_order)
+   values ('organik2', 'Organik', 1) returning id`,
+);
+const kPlastik = await db.query<{ id: string }>(
+  `insert into waste_categories (slug, name, sort_order)
+   values ('plastik2', 'Plastik', 2) returning id`,
+);
+
+await db.query(
+  `insert into waste_guide_items (category_id, name, is_highlighted)
+   values ($1, 'kulit telur', true)`,
+  [kOrganik.rows[0].id],
+);
+await gagal(
+  db,
+  `insert into waste_guide_items (category_id, name) values ($1, 'kulit telur')`,
+  [kPlastik.rows[0].id],
+  "benda bernama sama dua kali — dua baris berarti dua jawaban",
+);
+await gagal(
+  db,
+  `insert into waste_guide_items (category_id, name, mistaken_for_id)
+   values ($1, 'sedotan', $1)`,
+  [kPlastik.rows[0].id],
+  "benda 'sering dikira' masuk tongnya sendiri",
+);
+/* Kategori yang masih punya benda tidak boleh hilang: yang hilang bersamanya
+   adalah jawaban yang sudah dibaca warga. */
+await gagal(
+  db,
+  `delete from waste_categories where id = $1`,
+  [kOrganik.rows[0].id],
+  "hapus kategori yang masih punya benda panduan",
+);
+
+/* Tong yang sering dikira boleh hilang tanpa membawa bendanya: jawaban
+   utamanya ("styrofoam → campuran") tetap benar tanpa catatan salah kira. */
+await db.query(
+  `insert into waste_guide_items (category_id, name, mistaken_for_id)
+   values ($1, 'styrofoam', $2)`,
+  [kOrganik.rows[0].id, kPlastik.rows[0].id],
+);
+await db.query(`delete from waste_categories where id = $1`, [
+  kPlastik.rows[0].id,
+]);
+const styro = await db.query<{ n: number; dikira: string | null }>(
+  `select count(*)::int as n, min(mistaken_for_id::text) as dikira
+   from waste_guide_items where name = 'styrofoam'`,
+);
+assert.equal(styro.rows[0].n, 1, "benda tetap ada setelah tong salah-kira hilang");
+assert.equal(styro.rows[0].dikira, null, "mistaken_for_id jadi null, bukan ikut terhapus");
+console.log("✓ panduan sampah: nama unik, salah-kira tidak menunjuk diri sendiri");
 
 await db.close();
 

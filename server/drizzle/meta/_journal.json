@@ -78,6 +78,13 @@
       "when": 1793726639355,
       "tag": "0010_transaksi_pembayaran",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794229864073,
+      "tag": "0011_panduan_sampah",
+      "breakpoints": true
     }
   ]
 }
