@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // API Elysia/Bun: paket terpisah dengan tsconfig sendiri — aturan
+    // Next/React tidak berlaku di sana. Diperiksa dengan `tsc -p server`.
+    "server/**",
   ]),
 ]);
 
