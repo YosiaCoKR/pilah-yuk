@@ -66,35 +66,33 @@ export type IsiMasuk = { hp: string; sandi: string };
 export type GalatMasuk = Partial<Record<keyof IsiMasuk, string>>;
 
 /**
- * Aturan halaman masuk. Memakai `normalkanHp` yang sama dengan pendaftaran —
- * nomor yang baru didaftarkan sebagai "+62 812…" harus bisa dipakai masuk
- * meski ditulis "0812…".
- *
- * ponytail: pencocokan ke daftar nomor ini cuma untuk data tiruan. API masuk
- * sungguhan mengembalikan satu pesan gabungan ("nomor atau sandi salah")
- * supaya tidak membocorkan nomor mana yang sudah terdaftar.
+ * Aturan halaman masuk: hanya bentuk isian. Cocok-tidaknya akun dijawab
+ * server dengan satu pesan gabungan (`GALAT_MASUK`) — tidak pernah "nomor ini
+ * belum terdaftar", karena itu membocorkan nomor mana yang punya akun.
  */
-export function periksaMasuk(
-  isi: IsiMasuk,
-  /** Nomor yang punya akun — dari data tiruan, nanti dijawab server. */
-  terdaftar: readonly string[] = [],
-): GalatMasuk {
+export function periksaMasuk(isi: IsiMasuk): GalatMasuk {
   const g: GalatMasuk = {};
 
   const hp = normalkanHp(isi.hp);
-  if (!hp) {
-    g.hp = "Masuk pakai nomor HP yang dipakai saat mendaftar.";
-  } else if (!POLA_HP.test(hp)) {
+  if (!hp) g.hp = "Masuk pakai nomor HP yang dipakai saat mendaftar.";
+  else if (!POLA_HP.test(hp))
     g.hp = "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
-  } else if (terdaftar.length && !terdaftar.includes(hp)) {
-    g.hp = "Nomor ini belum punya akun. Daftar dulu, gratis.";
-  }
 
   if (!isi.sandi) g.sandi = "Kata sandinya belum diisi.";
   else if (isi.sandi.length < 8) g.sandi = "Sandi minimal 8 karakter.";
 
   return g;
 }
+
+/*
+  Galat tingkat form — bukan salah isi satu kolom, jadi tampil di kotak atas.
+  Selain dua ini, tampilkan `pesan` dari server apa adanya: server sudah
+  menulisnya dalam bahasa awam.
+*/
+export const GALAT_MASUK =
+  "Nomor HP atau kata sandinya tidak cocok. Periksa lagi, atau atur ulang sandi lewat tautan di bawah.";
+export const GALAT_JARINGAN =
+  "Sepertinya internetmu sedang putus. Isianmu tidak hilang — tekan tombolnya lagi setelah sinyal kembali.";
 
 /**
  * Langkah 1 lupa sandi: cukup format nomornya. Sengaja TIDAK mencocokkan ke

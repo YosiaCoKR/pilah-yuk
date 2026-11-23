@@ -2,12 +2,13 @@
 
 import { useId, useState } from "react";
 import {
+  GALAT_JARINGAN,
   normalkanHp,
   periksaAturUlang,
   periksaLupa,
   type IsiAturUlang,
 } from "@/lib/akun";
-import { Isian, Kartu } from "../primitif";
+import { Isian, Kartu, KotakGalat } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
 import { IkonCentang } from "../ikon";
 
@@ -25,12 +26,15 @@ export function FormLupaSandi() {
   const [selesai, setSelesai] = useState(false);
   /* Seperti form lain: teguran baru muncul setelah tombol ditekan. */
   const [dicoba, setDicoba] = useState(false);
+  const [galatForm, setGalatForm] = useState<string | null>(null);
 
   const galatHp = dicoba && !terkirim ? periksaLupa(hp) : undefined;
   const galat = dicoba && terkirim ? periksaAturUlang(isi) : {};
 
-  const ubah = (k: keyof IsiAturUlang) => (v: string) =>
+  const ubah = (k: keyof IsiAturUlang) => (v: string) => {
     setIsi((x) => ({ ...x, [k]: v }));
+    setGalatForm(null);
+  };
 
   function kirimKode(e: React.FormEvent) {
     e.preventDefault();
@@ -39,6 +43,7 @@ export function FormLupaSandi() {
       document.getElementById(`${id}-hp`)?.focus();
       return;
     }
+    if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
     /* ponytail: belum ada SMS sungguhan — kode 6 angka apa pun diterima di
        data tiruan. Ganti dengan permintaan OTP saat task backend Fase 4. */
     setTerkirim(normalkanHp(hp));
@@ -53,6 +58,7 @@ export function FormLupaSandi() {
       document.getElementById(`${id}-${Object.keys(g)[0]}`)?.focus();
       return;
     }
+    if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
     setSelesai(true);
   }
 
@@ -71,12 +77,16 @@ export function FormLupaSandi() {
         onSubmit={kirimKode}
         noValidate
       >
+        <KotakGalat>{galatForm}</KotakGalat>
         <Isian
           id={`${id}-hp`}
           label="Nomor HP"
           bantuan="Kami kirim kode 6 angka lewat SMS ke nomor ini."
           value={hp}
-          onChange={setHp}
+          onChange={(v) => {
+            setHp(v);
+            setGalatForm(null);
+          }}
           placeholder="0812 3456 7890"
           type="tel"
           inputMode="tel"
@@ -91,6 +101,7 @@ export function FormLupaSandi() {
 
   return (
     <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={aturUlang} noValidate>
+      <KotakGalat>{galatForm}</KotakGalat>
       {/* Jawaban yang sama untuk semua nomor — tidak membocorkan nomor mana
           yang punya akun. */}
       <p

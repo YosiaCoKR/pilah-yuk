@@ -181,3 +181,20 @@ export function Isian({
     </div>
   );
 }
+
+/**
+ * Galat tingkat form: hal yang bukan salah satu isian (sandi tidak cocok,
+ * internet putus, server menolak). `role="alert"` membuat pembaca layar
+ * langsung mengucapkannya tanpa warga harus mencarinya.
+ */
+export function KotakGalat({ children }: { children?: ReactNode }) {
+  if (!children) return null;
+  return (
+    <p
+      role="alert"
+      className="rounded-kartu border border-alarm/45 bg-alarm-tipis p-3 text-[13px] font-medium leading-snug text-alarm"
+    >
+      {children}
+    </p>
+  );
+}

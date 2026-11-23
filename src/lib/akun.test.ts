@@ -48,19 +48,14 @@ console.log("akun: semua pemeriksaan lulus");
 /* Halaman masuk: aturan nomor harus identik dengan pendaftaran. */
 
 const masukSah = { hp: "0812 3456 7890", sandi: "rahasia123" };
-assert.deepEqual(periksaMasuk(masukSah, HP_TERDAFTAR), {});
-/* Nomor terdaftar tetap dikenali walau ditulis dengan awalan +62. */
-assert.deepEqual(
-  periksaMasuk({ ...masukSah, hp: "+62 812-3456-7890" }, HP_TERDAFTAR),
-  {},
-);
-/* Nomor yang belum punya akun ditolak — kalau tidak, warga baru terjebak di
-   layar masuk tanpa tahu harus mendaftar. */
-assert.ok(periksaMasuk({ ...masukSah, hp: "0899 0000 0000" }, HP_TERDAFTAR).hp);
-assert.ok(periksaMasuk({ hp: "", sandi: "" }).hp);
-assert.ok(periksaMasuk({ ...masukSah, sandi: "pendek1" }).sandi);
-/* Tanpa daftar pembanding, pemeriksaan "belum terdaftar" harus diam. */
+assert.deepEqual(periksaMasuk(masukSah), {});
+assert.deepEqual(periksaMasuk({ ...masukSah, hp: "+62 812-3456-7890" }), {});
+/* Nomor yang belum punya akun TIDAK ditolak di sini — kalau ditolak, layar
+   masuk jadi alat menebak nomor warga. Server menjawab dengan GALAT_MASUK. */
 assert.deepEqual(periksaMasuk({ ...masukSah, hp: "0899 0000 0000" }), {});
+assert.ok(periksaMasuk({ hp: "", sandi: "" }).hp);
+assert.ok(periksaMasuk({ ...masukSah, hp: "0212345678" }).hp);
+assert.ok(periksaMasuk({ ...masukSah, sandi: "pendek1" }).sandi);
 
 console.log("masuk: semua pemeriksaan lulus");
 

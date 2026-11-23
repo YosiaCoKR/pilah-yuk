@@ -2,9 +2,15 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
-import { periksaMasuk, type IsiMasuk } from "@/lib/akun";
-import { HP_TERDAFTAR } from "@/lib/mock";
-import { Isian, Kartu } from "../primitif";
+import {
+  GALAT_JARINGAN,
+  GALAT_MASUK,
+  normalkanHp,
+  periksaMasuk,
+  type IsiMasuk,
+} from "@/lib/akun";
+import { HP_TERDAFTAR, SANDI_TIRUAN } from "@/lib/mock";
+import { Isian, Kartu, KotakGalat } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
 import { IkonCentang } from "../ikon";
 
@@ -14,24 +20,32 @@ export function FormMasuk() {
   const id = useId();
   const [isi, setIsi] = useState<IsiMasuk>(KOSONG);
   const [masuk, setMasuk] = useState(false);
+  const [galatForm, setGalatForm] = useState<string | null>(null);
   /* Sama seperti form daftar: validasi menunggu tombol ditekan supaya warga
      tidak ditegur di huruf pertama. */
   const [dicoba, setDicoba] = useState(false);
-  const galat = dicoba ? periksaMasuk(isi, HP_TERDAFTAR) : {};
+  const galat = dicoba ? periksaMasuk(isi) : {};
 
-  const ubah = (k: keyof IsiMasuk) => (v: string) =>
+  const ubah = (k: keyof IsiMasuk) => (v: string) => {
     setIsi((x) => ({ ...x, [k]: v }));
+    setGalatForm(null);
+  };
 
   function kirim(e: React.FormEvent) {
     e.preventDefault();
     setDicoba(true);
-    const g = periksaMasuk(isi, HP_TERDAFTAR);
+    const g = periksaMasuk(isi);
     if (Object.keys(g).length) {
       document.getElementById(`${id}-${Object.keys(g)[0]}`)?.focus();
       return;
     }
-    /* ponytail: sesi cuma hidup di state layar ini. Ganti dengan panggilan
-       masuk sungguhan saat task backend Fase 4 dikerjakan. */
+    if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
+    /* ponytail: sesi cuma hidup di state layar ini, dicocokkan ke akun
+       tiruan. Ganti dengan panggilan masuk sungguhan saat task backend Fase 4
+       — jawabannya tetap satu pesan gabungan untuk nomor ATAU sandi salah. */
+    const cocok =
+      HP_TERDAFTAR.includes(normalkanHp(isi.hp)) && isi.sandi === SANDI_TIRUAN;
+    if (!cocok) return setGalatForm(GALAT_MASUK);
     setMasuk(true);
   }
 
@@ -39,6 +53,7 @@ export function FormMasuk() {
 
   return (
     <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={kirim} noValidate>
+      <KotakGalat>{galatForm}</KotakGalat>
       <Isian
         id={`${id}-hp`}
         label="Nomor HP"

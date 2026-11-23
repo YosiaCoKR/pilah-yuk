@@ -2,9 +2,14 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
-import { periksaPendaftaran, type IsiDaftar, type Peran } from "@/lib/akun";
+import {
+  GALAT_JARINGAN,
+  periksaPendaftaran,
+  type IsiDaftar,
+  type Peran,
+} from "@/lib/akun";
 import { HP_TERDAFTAR } from "@/lib/mock";
-import { Isian, Kartu } from "../primitif";
+import { Isian, Kartu, KotakGalat } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
 import { IkonCentang } from "../ikon";
 
@@ -34,10 +39,13 @@ export function FormDaftar() {
   /* Validasi baru muncul setelah tombol ditekan — warga jangan ditegur saat
      masih mengetik huruf pertama. */
   const [dicoba, setDicoba] = useState(false);
+  const [galatForm, setGalatForm] = useState<string | null>(null);
   const galat = dicoba ? periksaPendaftaran(isi, HP_TERDAFTAR) : {};
 
-  const ubah = (k: keyof IsiDaftar) => (v: string) =>
+  const ubah = (k: keyof IsiDaftar) => (v: string) => {
     setIsi((x) => ({ ...x, [k]: v }));
+    setGalatForm(null);
+  };
 
   function kirim(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +55,7 @@ export function FormDaftar() {
       document.getElementById(`${id}-${Object.keys(g)[0]}`)?.focus();
       return;
     }
+    if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
     /* ponytail: akun cuma disimpan di state layar ini. Ganti dengan panggilan
        pendaftaran sungguhan saat task backend Fase 4 dikerjakan. */
     setAkun({ nama: isi.nama.trim(), peran: isi.peran });
@@ -56,6 +65,7 @@ export function FormDaftar() {
 
   return (
     <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={kirim} noValidate>
+      <KotakGalat>{galatForm}</KotakGalat>
       <Isian
         id={`${id}-nama`}
         label="Nama"

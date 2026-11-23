@@ -53,7 +53,12 @@ export const WASTE_CATEGORIES: WasteCategory[] = [
 export const BENDA: WasteItem[] = [
   { nama: "kulit telur", jenis: "organik", sorot: true },
   { nama: "ampas kopi", jenis: "organik", sorot: true },
-  { nama: "teh celup", jenis: "organik", sorot: true, catatan: "Kantongnya ikut saja; benangnya dibuang ke campuran." },
+  {
+    nama: "teh celup",
+    jenis: "organik",
+    sorot: true,
+    catatan: "Kantongnya ikut saja; benangnya dibuang ke campuran.",
+  },
   { nama: "tulang ayam", jenis: "organik", sorot: true },
   { nama: "sisa nasi", jenis: "organik" },
   { nama: "kulit buah", jenis: "organik" },
@@ -62,7 +67,13 @@ export const BENDA: WasteItem[] = [
 
   { nama: "tutup galon", jenis: "plastik", sorot: true },
   { nama: "sedotan", jenis: "plastik", sorot: true },
-  { nama: "bungkus sampo", jenis: "plastik", sorot: true, catatan: "Sachet memang sulit didaur ulang, tapi tetap dipisah dari organik." },
+  {
+    nama: "bungkus sampo",
+    jenis: "plastik",
+    sorot: true,
+    catatan:
+      "Sachet memang sulit didaur ulang, tapi tetap dipisah dari organik.",
+  },
   { nama: "gelas plastik", jenis: "plastik", sorot: true },
   { nama: "botol air", jenis: "plastik" },
   { nama: "kresek", jenis: "plastik" },
@@ -71,21 +82,60 @@ export const BENDA: WasteItem[] = [
 
   { nama: "kotak sepatu", jenis: "kertas", sorot: true },
   { nama: "gulungan tisu", jenis: "kertas", sorot: true },
-  { nama: "amplop", jenis: "kertas", sorot: true, catatan: "Jendela plastiknya disobek dulu kalau ada." },
+  {
+    nama: "amplop",
+    jenis: "kertas",
+    sorot: true,
+    catatan: "Jendela plastiknya disobek dulu kalau ada.",
+  },
   { nama: "kardus telur", jenis: "kertas", sorot: true },
   { nama: "kardus", jenis: "kertas" },
   { nama: "koran", jenis: "kertas" },
   { nama: "buku tulis", jenis: "kertas" },
   { nama: "majalah", jenis: "kertas" },
 
-  { nama: "popok", jenis: "campuran", sorot: true, catatan: "Bungkus rapat dulu supaya petugas aman memegangnya." },
-  { nama: "styrofoam", jenis: "campuran", sorot: true, mirip: "plastik", catatan: "Terlihat seperti plastik, tapi tidak ada yang mendaur ulangnya di sini." },
-  { nama: "pecahan kaca", jenis: "campuran", sorot: true, catatan: "Bungkus koran dan tulisi \u201ckaca\u201d — tangan petugas yang membongkarnya." },
+  {
+    nama: "popok",
+    jenis: "campuran",
+    sorot: true,
+    catatan: "Bungkus rapat dulu supaya petugas aman memegangnya.",
+  },
+  {
+    nama: "styrofoam",
+    jenis: "campuran",
+    sorot: true,
+    mirip: "plastik",
+    catatan:
+      "Terlihat seperti plastik, tapi tidak ada yang mendaur ulangnya di sini.",
+  },
+  {
+    nama: "pecahan kaca",
+    jenis: "campuran",
+    sorot: true,
+    catatan:
+      "Bungkus koran dan tulisi \u201ckaca\u201d — tangan petugas yang membongkarnya.",
+  },
   { nama: "puntung rokok", jenis: "campuran", sorot: true },
-  { nama: "tisu bekas", jenis: "campuran", mirip: "kertas", catatan: "Sudah kotor dan basah, jadi tidak bisa ikut kertas." },
+  {
+    nama: "tisu bekas",
+    jenis: "campuran",
+    mirip: "kertas",
+    catatan: "Sudah kotor dan basah, jadi tidak bisa ikut kertas.",
+  },
   { nama: "masker", jenis: "campuran" },
-  { nama: "sikat gigi", jenis: "campuran", mirip: "plastik", catatan: "Campuran plastik dan nilon yang tidak bisa dipisah lagi." },
-  { nama: "kemasan minyak", jenis: "campuran", mirip: "plastik", catatan: "Berminyak di dalam; kalau sempat dicuci bersih, boleh ikut plastik." },
+  {
+    nama: "sikat gigi",
+    jenis: "campuran",
+    mirip: "plastik",
+    catatan: "Campuran plastik dan nilon yang tidak bisa dipisah lagi.",
+  },
+  {
+    nama: "kemasan minyak",
+    jenis: "campuran",
+    mirip: "plastik",
+    catatan:
+      "Berminyak di dalam; kalau sempat dicuci bersih, boleh ikut plastik.",
+  },
 ];
 
 /** Contoh benda untuk kartu jenis — diambil dari daftar yang sama. */
@@ -118,7 +168,9 @@ export function cariBenda(kata: string): WasteItem[] {
   return BENDA.filter(
     (b) =>
       b.nama.includes(q) ||
-      WASTE_CATEGORIES.find((k) => k.key === b.jenis)!.name.toLowerCase().includes(q),
+      WASTE_CATEGORIES.find((k) => k.key === b.jenis)!
+        .name.toLowerCase()
+        .includes(q),
   );
 }
 
@@ -200,7 +252,11 @@ export const ADDRESSES: Address[] = [
 
 export const TIME_SLOTS: TimeSlot[] = [
   { id: "slot-pagi", range: "06.00–08.00", note: "Paling sering dipilih" },
-  { id: "slot-siang", range: "09.00–11.00", note: "Petugas lewat setelah pasar" },
+  {
+    id: "slot-siang",
+    range: "09.00–11.00",
+    note: "Petugas lewat setelah pasar",
+  },
   { id: "slot-sore", range: "15.00–17.00", note: "Kuota penuh", full: true },
   { id: "slot-petang", range: "17.00–19.00", note: "Sebelum magrib" },
 ];
@@ -318,7 +374,6 @@ export function slotById(id: string | null | undefined) {
 export function categoryByKey(key: WasteKey) {
   return WASTE_CATEGORIES.find((c) => c.key === key)!;
 }
-
 
 /* Flip `status` here to see the other states of the subscription notice. */
 export const SUBSCRIPTION: Subscription = {
@@ -490,7 +545,6 @@ export const RIWAYAT_TAMBAHAN: Pickup[] = [
 
 /** Semua pesanan: mendatang + riwayat. */
 export const SEMUA_PICKUP: Pickup[] = [...PICKUPS, ...RIWAYAT_TAMBAHAN];
-
 
 export const PENGUMUMAN: ChannelPost[] = [
   {
@@ -693,7 +747,8 @@ export const DISKUSI: ChannelThread[] = [
         id: "bl-4",
         author: "Bu Ratna",
         authorRole: "Ketua RW 06",
-        content: "Jam 7 di balai RW. Karung disediakan, bawa sarung tangan saja.",
+        content:
+          "Jam 7 di balai RW. Karung disediakan, bawa sarung tangan saja.",
         agoDays: 2,
       },
     ],
@@ -803,3 +858,5 @@ export function jarakTerbaca(meter: number) {
 
 /* Nomor yang dianggap sudah punya akun, buat menguji layar pendaftaran. */
 export const HP_TERDAFTAR = ["081234567890", "085600112233"];
+/* Sandi semua akun tiruan di atas, buat mencoba jalur "sandi salah". */
+export const SANDI_TIRUAN = "rahasia123";
