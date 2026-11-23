@@ -856,6 +856,9 @@ export function jarakTerbaca(meter: number) {
   return `${(meter / 1000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} km`;
 }
 
+/* Warga yang sedang masuk. ponytail: tetap, sampai sesi sungguhan ada. */
+export const PENGGUNA = { nama: "Bu Rina" };
+
 /* Nomor yang dianggap sudah punya akun, buat menguji layar pendaftaran. */
 export const HP_TERDAFTAR = ["081234567890", "085600112233"];
 /* Sandi semua akun tiruan di atas, buat mencoba jalur "sandi salah". */

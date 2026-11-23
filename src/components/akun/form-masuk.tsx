@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   GALAT_JARINGAN,
   GALAT_MASUK,
@@ -10,16 +11,15 @@ import {
   type IsiMasuk,
 } from "@/lib/akun";
 import { HP_TERDAFTAR, SANDI_TIRUAN } from "@/lib/mock";
-import { Isian, Kartu, KotakGalat } from "../primitif";
-import { Tombol, TombolLink } from "../tombol";
-import { IkonCentang } from "../ikon";
+import { Isian, KotakGalat } from "../primitif";
+import { Tombol } from "../tombol";
 
 const KOSONG: IsiMasuk = { hp: "", sandi: "" };
 
 export function FormMasuk() {
   const id = useId();
   const [isi, setIsi] = useState<IsiMasuk>(KOSONG);
-  const [masuk, setMasuk] = useState(false);
+  const router = useRouter();
   const [galatForm, setGalatForm] = useState<string | null>(null);
   /* Sama seperti form daftar: validasi menunggu tombol ditekan supaya warga
      tidak ditegur di huruf pertama. */
@@ -46,10 +46,10 @@ export function FormMasuk() {
     const cocok =
       HP_TERDAFTAR.includes(normalkanHp(isi.hp)) && isi.sandi === SANDI_TIRUAN;
     if (!cocok) return setGalatForm(GALAT_MASUK);
-    setMasuk(true);
+    /* Langsung ke beranda — tidak ada kartu "berhasil" yang harus ditutup
+       dulu. `replace` supaya tombol kembali tidak membuka layar masuk lagi. */
+    router.replace("/");
   }
-
-  if (masuk) return <Selesai />;
 
   return (
     <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={kirim} noValidate>
@@ -96,31 +96,5 @@ export function FormMasuk() {
         dulu, cuma tiga isian.
       </p>
     </form>
-  );
-}
-
-function Selesai() {
-  return (
-    <div className="px-4 pb-10 pt-8">
-      <Kartu className="p-6 text-center motion-safe:animate-[terbit_.45s_cubic-bezier(.2,.8,.2,1)_both]">
-        <span className="mx-auto grid size-14 place-items-center rounded-full bg-hijau text-white">
-          <IkonCentang className="size-7" />
-        </span>
-        <h2 className="mt-4 text-[20px] font-bold leading-tight">
-          Selamat datang kembali
-        </h2>
-        <p className="mx-auto mt-1 max-w-[30ch] text-[14px] leading-snug text-ink-2">
-          Jadwal jemput dan tagihan langgananmu sudah menunggu di halaman utama.
-        </p>
-        <div className="mt-5 space-y-2">
-          <TombolLink href="/" lebar>
-            Ke halaman utama
-          </TombolLink>
-          <TombolLink href="/pesan" varian="garis" lebar>
-            Pesan jemput
-          </TombolLink>
-        </div>
-      </Kartu>
-    </div>
   );
 }

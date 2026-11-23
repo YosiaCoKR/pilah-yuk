@@ -150,10 +150,20 @@ export function teksKuitansi(tagihan: Invoice): string {
     barisKuitansi("Status", tagihan.status === "lunas" ? "Lunas" : "Gagal"),
     /* null, bukan "" — baris kosong di atas memang pemisah yang disengaja,
        jadi hanya baris opsional yang boleh hilang. */
-    tagihan.failureReason ? barisKuitansi("Sebab", tagihan.failureReason) : null,
+    tagihan.failureReason
+      ? barisKuitansi("Sebab", tagihan.failureReason)
+      : null,
     "",
     "Dokumen ini dibuat otomatis dari aplikasi Pilah Yuk.",
   ]
     .filter((b) => b !== null)
     .join("\n");
+}
+
+/** Salam menurut jam setempat — "Selamat pagi" jam 9 malam terasa asal. */
+export function salam(jam: number): string {
+  if (jam < 4 || jam >= 18) return "Selamat malam";
+  if (jam < 11) return "Selamat pagi";
+  if (jam < 15) return "Selamat siang";
+  return "Selamat sore";
 }

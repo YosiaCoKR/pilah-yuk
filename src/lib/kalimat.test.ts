@@ -1,6 +1,7 @@
 /** Jalankan: npm run test:kalimat */
 import assert from "node:assert/strict";
 import {
+  salam,
   hargaPerJemput,
   iramaJemput,
   satuanSiklus,
@@ -150,7 +151,10 @@ assert.ok(
   !seringTertukar("plastik").some((b) => b.nama === "amplop"),
   "amplop tidak pernah dikira plastik; catatannya cuma menyebut kata itu",
 );
-assert.deepEqual(seringTertukar("kertas").map((b) => b.nama), ["tisu bekas"]);
+assert.deepEqual(
+  seringTertukar("kertas").map((b) => b.nama),
+  ["tisu bekas"],
+);
 for (const jenis of WASTE_CATEGORIES.map((k) => k.key)) {
   /* Benda yang jenisnya sama dengan tong yang sedang dibuka bukan "sering
      dikira" — ia memang masuk sini, dan mencetaknya di bagian itu
@@ -172,7 +176,8 @@ for (const jenis of WASTE_CATEGORIES.map((k) => k.key)) {
   const benda = bendaJenis(jenis);
   assert.ok(benda.length > 0, `jenis ${jenis} tidak punya benda sama sekali`);
   assert.equal(
-    benda.filter((b) => !b.catatan).length + benda.filter((b) => b.catatan).length,
+    benda.filter((b) => !b.catatan).length +
+      benda.filter((b) => b.catatan).length,
     benda.length,
   );
   assert.ok(benda.every((b) => b.jenis === jenis));
@@ -188,7 +193,10 @@ assert.notDeepEqual(tipHari("2026-11-04"), tipHari("2026-11-05"));
 const putaran = TIPS_PILAH.length;
 const majuHari = (iso: string, n: number) =>
   new Date(Date.parse(iso) + n * 86_400_000).toISOString().slice(0, 10);
-assert.deepEqual(tipHari("2026-11-04"), tipHari(majuHari("2026-11-04", putaran)));
+assert.deepEqual(
+  tipHari("2026-11-04"),
+  tipHari(majuHari("2026-11-04", putaran)),
+);
 /* Tanggal sebelum 1970 memberi hari negatif; modulo mentah akan memulangkan
    indeks negatif dan tipnya jadi undefined. */
 assert.ok(tipHari("1969-07-20"));
@@ -196,8 +204,9 @@ assert.ok(tipHari("1969-07-20"));
    melompati sebagian tips membuat sisanya tidak pernah terbaca. */
 assert.equal(
   new Set(
-    Array.from({ length: putaran }, (_, i) =>
-      tipHari(majuHari("2026-11-04", i)).teks,
+    Array.from(
+      { length: putaran },
+      (_, i) => tipHari(majuHari("2026-11-04", i)).teks,
     ),
   ).size,
   putaran,
@@ -211,6 +220,15 @@ assert.ok(TIPS_PILAH.every((t) => t.teks.trim().length > 0));
 assert.ok(
   TIPS_PILAH.every((t) => WASTE_CATEGORIES.some((k) => k.key === t.jenis)),
 );
-console.log("✓ tips harian: berotasi per tanggal, satu putaran penuh, dari data panduan");
+console.log(
+  "✓ tips harian: berotasi per tanggal, satu putaran penuh, dari data panduan",
+);
+
+assert.equal(salam(6), "Selamat pagi");
+assert.equal(salam(12), "Selamat siang");
+assert.equal(salam(16), "Selamat sore");
+assert.equal(salam(21), "Selamat malam");
+assert.equal(salam(2), "Selamat malam");
+console.log("✓ salam: mengikuti jam");
 
 console.log("\nSemua pemeriksaan kalimat lulus.");

@@ -11,7 +11,8 @@ import {
 import { PengingatLangganan } from "@/components/pengingat-langganan";
 import { Kartu, Label } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
-import { CHANNELS, PICKUPS } from "@/lib/mock";
+import { PermintaanGabung, Salam } from "@/components/sapaan";
+import { CHANNELS, PENGGUNA, PICKUPS } from "@/lib/mock";
 
 const PINTASAN = [
   { href: "/jadwal", label: "Jadwal rutin", Ikon: IkonJadwal },
@@ -28,8 +29,8 @@ export default function Beranda() {
     <main className="space-y-7">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[13px] text-ink-2">Selamat pagi,</p>
-          <p className="text-[19px] font-bold leading-tight">Bu Rina</p>
+          <Salam />
+          <p className="text-[19px] font-bold leading-tight">{PENGGUNA.nama}</p>
         </div>
         <Link
           href="/notifikasi"
@@ -48,12 +49,16 @@ export default function Beranda() {
         <KartuJemput pickup={berikutnya} />
       ) : (
         <Kartu className="p-5 text-center">
-          <p className="text-[15px] font-semibold">Belum ada jemput terjadwal</p>
+          <p className="text-[15px] font-semibold">
+            Belum ada jemput terjadwal
+          </p>
           <p className="mt-1 text-[13px] text-ink-2">
             Pesan sekarang, petugas RW akan datang sesuai jam pilihanmu.
           </p>
         </Kartu>
       )}
+
+      {channelku?.isManager && <PermintaanGabung channelId={channelku.id} />}
 
       <PengingatLangganan />
 
@@ -83,7 +88,10 @@ export default function Beranda() {
       <section className="space-y-3">
         <Label
           aksi={
-            <Link href="/channel" className="text-[13px] font-semibold text-hijau">
+            <Link
+              href="/channel"
+              className="text-[13px] font-semibold text-hijau"
+            >
               {channelku ? "Buka" : "Cari channel"}
             </Link>
           }
