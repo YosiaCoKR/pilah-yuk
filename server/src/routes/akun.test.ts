@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { GalatAkun, buatSupabaseAuth } from "../akun";
 import { buatApp } from "../app";
-import { lulus, siapkan } from "../test/bantu";
+import { KODE_UJI, lulus, siapkan } from "../test/bantu";
 
 const { db, panggil, schema, akun } = await siapkan();
 const sah = {
@@ -20,8 +20,47 @@ const sah = {
   peran: "pengurus",
 };
 
-/* --- berhasil: profil terbentuk, peran terbawa, sesi langsung ada --- */
+/* --- daftar: kode SMS dulu, belum ada sesi maupun profil --- */
 let r = await panggil("POST", "/api/akun/daftar", { body: sah });
+assert.equal(r.status, 202, JSON.stringify(r.body));
+assert.equal(r.body.data.hp, "081311112222");
+assert.equal(
+  r.body.data.sesi,
+  undefined,
+  "belum masuk sebelum kode diverifikasi",
+);
+const belum = await db
+  .select()
+  .from(schema.users)
+  .where(eq(schema.users.phone, "081311112222"));
+assert.equal(
+  belum.length,
+  0,
+  "nomor belum terbukti miliknya → belum ada profil",
+);
+lulus("POST /akun/daftar → 202, kode dikirim, profil belum ada");
+
+/* Belum aktif: belum bisa masuk pakai sandinya. */
+r = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: sah.hp, sandi: sah.sandi },
+});
+assert.equal(r.status, 401);
+
+r = await panggil("POST", "/api/akun/daftar/verifikasi", {
+  body: { hp: sah.hp, kode: "000000" },
+});
+assert.equal(r.status, 422);
+assert.match(r.body.pesan, /kedaluwarsa/);
+r = await panggil("POST", "/api/akun/daftar/verifikasi", {
+  body: { hp: sah.hp, kode: "12a456" },
+});
+assert.equal(r.body.rincian[0].kolom, "kode");
+lulus("kode salah → 422, akun tetap belum aktif");
+
+/* --- verifikasi: profil terbentuk, peran terbawa, sesi langsung ada --- */
+r = await panggil("POST", "/api/akun/daftar/verifikasi", {
+  body: { hp: sah.hp, kode: `${KODE_UJI.slice(0, 3)} ${KODE_UJI.slice(3)}` },
+});
 assert.equal(r.status, 201, JSON.stringify(r.body));
 assert.equal(r.body.data.pengguna.nama, "Siti");
 assert.equal(r.body.data.pengguna.peran, "pengurus");
@@ -34,7 +73,7 @@ const [profil] = await db
   .from(schema.users)
   .where(eq(schema.users.id, r.body.data.pengguna.id));
 assert.equal(profil.phone, "081311112222", "nomor tersimpan dalam bentuk 08xx");
-lulus("POST /akun/daftar → 201, profil + peran + sesi");
+lulus("POST /akun/daftar/verifikasi → 201, profil + peran + sesi");
 
 /* --- nomor yang sama, ditulis lain --- */
 r = await panggil("POST", "/api/akun/daftar", {
@@ -146,46 +185,57 @@ try {
     peran: "warga" as const,
   };
 
-  jawab = (url) =>
-    url.includes("/admin/users")
-      ? [200, { id: "u1" }]
-      : [
-          200,
-          {
-            access_token: "a",
-            refresh_token: "r",
-            expires_in: 60,
-            user: { id: "u1" },
-          },
-        ];
-  const hasil = await supa.daftar(minta);
-  assert.deepEqual(hasil, {
-    penggunaId: "u1",
-    sesi: { accessToken: "a", refreshToken: "r", expiresIn: 60 },
-  });
-  assert.equal(terkirim[0].url, "https://x.supabase.co/auth/v1/admin/users");
+  jawab = () => [200, { id: "u1" }];
+  await supa.daftar(minta);
+  assert.equal(terkirim[0].url, "https://x.supabase.co/auth/v1/signup");
   assert.equal(
     terkirim[0].badan.phone,
     "6281311112222",
     "Supabase menyimpan 62xx",
   );
-  assert.deepEqual(terkirim[0].badan.user_metadata, {
+  assert.deepEqual(terkirim[0].badan.data, {
     full_name: "Siti",
     role: "warga",
   });
-  assert.match(terkirim[1].url, /token\?grant_type=password$/);
+  assert.equal(terkirim.length, 1, "tidak ada sesi sebelum kode diverifikasi");
 
-  jawab = () => [422, { error_code: "phone_exists" }];
-  await assert.rejects(supa.daftar(minta), (e: GalatAkun) => e.status === 409);
+  for (const kode of ["phone_exists", "user_already_exists"]) {
+    jawab = () => [422, { error_code: kode }];
+    await assert.rejects(
+      supa.daftar(minta),
+      (e: GalatAkun) => e.status === 409,
+    );
+  }
+  jawab = () => [429, { error_code: "over_sms_send_rate_limit" }];
+  await assert.rejects(supa.daftar(minta), (e: GalatAkun) => e.status === 429);
 
-  /* Akun jadi tapi token gagal: jangan suruh daftar ulang (akan 409). */
-  jawab = (url) =>
-    url.includes("/admin/users") ? [200, { id: "u1" }] : [500, {}];
+  terkirim.length = 0;
+  jawab = () => [
+    200,
+    {
+      access_token: "a",
+      refresh_token: "r",
+      expires_in: 60,
+      user: { id: "u1" },
+    },
+  ];
+  assert.deepEqual(await supa.verifikasi("081311112222", "123456"), {
+    penggunaId: "u1",
+    sesi: { accessToken: "a", refreshToken: "r", expiresIn: 60 },
+  });
+  assert.deepEqual(terkirim[0].badan, {
+    type: "sms",
+    phone: "6281311112222",
+    token: "123456",
+  });
+  jawab = () => [403, { error_code: "otp_expired" }];
   await assert.rejects(
-    supa.daftar(minta),
-    (e: GalatAkun) => e.status === 502 && /sudah jadi/.test(e.pesan),
+    supa.verifikasi("081311112222", "999999"),
+    (e: GalatAkun) => e.status === 422,
   );
-  lulus("klien GoTrue: 62xx, metadata peran, phone_exists → 409");
+  lulus(
+    "klien GoTrue: signup + verify sms, 62xx, phone_exists → 409, limit → 429",
+  );
 
   jawab = () => [400, { error_code: "invalid_credentials" }];
   await assert.rejects(

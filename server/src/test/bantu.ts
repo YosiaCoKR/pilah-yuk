@@ -10,6 +10,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import {
   GalatAkun,
   GALAT_HP_TERDAFTAR,
+  GALAT_KODE,
   GALAT_MASUK,
   keE164,
   type PenyediaAkun,
@@ -35,12 +36,14 @@ const DIR = new URL("../../drizzle/", import.meta.url).pathname;
 export async function pasangPrasyaratSupabase(klien: PGlite) {
   await klien.exec(`
     create schema if not exists auth;
-    /* Hanya kolom yang dibaca trigger profil (migrasi 0012). */
+    /* Hanya kolom yang dibaca trigger profil (migrasi 0012–0013). */
     create table if not exists auth.users (
       id uuid primary key,
       email text,
       phone text,
-      raw_user_meta_data jsonb
+      raw_user_meta_data jsonb,
+      phone_confirmed_at timestamptz,
+      email_confirmed_at timestamptz
     );
     create or replace function auth.uid() returns uuid
       language sql stable as $$
@@ -103,6 +106,9 @@ export function buatGatewayTiruan(): Gateway & { dimatikan: string[] } {
   };
 }
 
+/** Satu-satunya kode SMS yang diterima Supabase Auth tiruan. */
+export const KODE_UJI = "123456";
+
 /**
  * Supabase Auth tiruan: menulis ke `auth.users` PGlite, jadi trigger profil
  * (migrasi 0012) yang membuat baris `users` — bukan tiruan ini.
@@ -110,7 +116,10 @@ export function buatGatewayTiruan(): Gateway & { dimatikan: string[] } {
 export function buatAkunTiruan(
   klien: PGlite,
 ): PenyediaAkun & { dicabut: string[] } {
-  const sandiPer = new Map<string, { id: string; sandi: string }>();
+  const sandiPer = new Map<
+    string,
+    { id: string; sandi: string; aktif: boolean }
+  >();
   const dicabut: string[] = [];
   const sesi = (id: string) => ({
     penggunaId: id,
@@ -123,18 +132,37 @@ export function buatAkunTiruan(
   return {
     dicabut,
     async daftar({ hp, sandi, nama, peran }) {
-      if (sandiPer.has(hp)) throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
-      const r = await klien.query<{ id: string }>(
-        `insert into auth.users (id, phone, raw_user_meta_data)
-         values (gen_random_uuid(), $1, $2) returning id`,
-        [keE164(hp), JSON.stringify({ full_name: nama, role: peran })],
+      const meta = JSON.stringify({ full_name: nama, role: peran });
+      const ada = sandiPer.get(hp);
+      if (ada?.aktif) throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
+      /* Seperti GoTrue: daftar ulang nomor yang belum diverifikasi menimpa
+         isian & sandinya dan mengirim kode lagi. */
+      const r = ada
+        ? await klien.query<{ id: string }>(
+            `update auth.users set raw_user_meta_data = $2 where id = $1 returning id`,
+            [ada.id, meta],
+          )
+        : await klien.query<{ id: string }>(
+            `insert into auth.users (id, phone, raw_user_meta_data)
+             values (gen_random_uuid(), $1, $2) returning id`,
+            [keE164(hp), meta],
+          );
+      sandiPer.set(hp, { id: r.rows[0].id, sandi, aktif: false });
+    },
+    async verifikasi(hp, kode) {
+      const akun = sandiPer.get(hp);
+      if (!akun || kode !== KODE_UJI) throw new GalatAkun(GALAT_KODE, 422);
+      await klien.query(
+        `update auth.users set phone_confirmed_at = now() where id = $1`,
+        [akun.id],
       );
-      sandiPer.set(hp, { id: r.rows[0].id, sandi });
-      return sesi(r.rows[0].id);
+      akun.aktif = true;
+      return sesi(akun.id);
     },
     async masuk(hp, sandi) {
       const akun = sandiPer.get(hp);
-      if (!akun || akun.sandi !== sandi) throw new GalatAkun(GALAT_MASUK, 401);
+      if (!akun?.aktif || akun.sandi !== sandi)
+        throw new GalatAkun(GALAT_MASUK, 401);
       return sesi(akun.id);
     },
     async keluar(token) {

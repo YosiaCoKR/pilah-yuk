@@ -105,15 +105,21 @@ export function periksaLupa(hp: string): string | undefined {
   if (!POLA_HP.test(n)) return "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
 }
 
+/** Kode 6 angka dari SMS — dipakai daftar dan lupa sandi. */
+export function periksaKode(kode: string): string | undefined {
+  const k = kode.replace(/\s/g, "");
+  if (!k) return "Masukkan kode 6 angka dari SMS.";
+  if (!/^\d{6}$/.test(k)) return "Kodenya 6 angka, tanpa huruf.";
+}
+
 export type IsiAturUlang = { kode: string; sandi: string; ulang: string };
 export type GalatAturUlang = Partial<Record<keyof IsiAturUlang, string>>;
 
 /** Langkah 2: kode 6 angka dari SMS + sandi baru yang diketik dua kali. */
 export function periksaAturUlang(isi: IsiAturUlang): GalatAturUlang {
   const g: GalatAturUlang = {};
-  const kode = isi.kode.replace(/\s/g, "");
-  if (!kode) g.kode = "Masukkan kode 6 angka dari SMS.";
-  else if (!/^\d{6}$/.test(kode)) g.kode = "Kodenya 6 angka, tanpa huruf.";
+  g.kode = periksaKode(isi.kode);
+  if (!g.kode) delete g.kode;
 
   if (!isi.sandi) g.sandi = "Tulis kata sandi barumu.";
   else if (isi.sandi.length < 8)

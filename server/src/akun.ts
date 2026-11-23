@@ -27,8 +27,10 @@ type Masuk = { penggunaId: string; sesi: Sesi };
 
 /** Semua metode melempar `GalatAkun` untuk penolakan yang boleh dibaca warga. */
 export type PenyediaAkun = {
-  /** Buat akun lalu langsung masuk. */
-  daftar: (p: PermintaanDaftar) => Promise<Masuk>;
+  /** Buat akun yang belum aktif dan kirim kode SMS. Mengulang = kirim ulang. */
+  daftar: (p: PermintaanDaftar) => Promise<void>;
+  /** Tukar kode SMS pendaftaran dengan sesi; profil lahir di titik ini. */
+  verifikasi: (hp: string, kode: string) => Promise<Masuk>;
   /** `hp` sudah dinormalkan ke 08xx. */
   masuk: (hp: string, sandi: string) => Promise<Masuk>;
   /** Cabut sesi pemilik token (refresh token tidak bisa dipakai lagi). */
@@ -39,7 +41,7 @@ export type PenyediaAkun = {
 export class GalatAkun extends Error {
   constructor(
     readonly pesan: string,
-    readonly status: 401 | 409 | 422 | 502,
+    readonly status: 401 | 409 | 422 | 429 | 502,
   ) {
     super(pesan);
   }
@@ -64,6 +66,9 @@ export const keE164 = (hp: string) => `62${hp.slice(1)}`;
 /** Satu pesan untuk nomor ATAU sandi salah — sama dengan GALAT_MASUK web. */
 export const GALAT_MASUK =
   "Nomor HP atau kata sandinya tidak cocok. Periksa lagi, atau atur ulang sandi lewat tautan di bawah.";
+
+export const GALAT_KODE =
+  "Kodenya salah atau sudah kedaluwarsa. Periksa SMS terbaru, atau minta kode baru.";
 
 export const GALAT_HP_TERDAFTAR =
   "Nomor ini sudah terdaftar. Masuk saja pakai nomor yang sama.";
@@ -131,46 +136,67 @@ export function buatSupabaseAuth(
   }
 
   return {
+    /*
+      `/signup` biasa (bukan Admin API): dengan "Confirm phone" aktif di
+      Supabase, akun dibuat belum aktif dan kode SMS dikirim. Profil baru
+      dibuat saat kodenya diverifikasi (trigger migrasi 0013), jadi orang yang
+      memakai nomor orang lain tidak pernah sampai punya profil.
+
+      Mendaftar ulang nomor yang belum diverifikasi = kirim ulang kode.
+      Pastikan di proyek Supabase: Auth → Providers → Phone aktif, provider
+      SMS terpasang, dan "Confirm phone" menyala — tanpa itu Supabase
+      langsung mengaktifkan akun tanpa kode.
+    */
     async daftar({ hp, sandi, nama, peran }) {
-      const phone = keE164(hp);
-      /*
-        Admin API + phone_confirm: tidak ada SMS OTP saat daftar, supaya
-        pendaftaran selesai dalam semenit (PRD).
-
-        ponytail: nomornya belum dibuktikan milik pendaftar. Pemilik asli
-        merebutnya kembali lewat "Lupa sandi" (kode SMS). Tambahkan langkah
-        OTP saat daftar kalau penyerobotan nomor mulai terjadi.
-      */
-      const buat = await kirim("/admin/users", {
-        phone,
+      const { ok, j } = await kirim("/signup", {
+        phone: keE164(hp),
         password: sandi,
-        phone_confirm: true,
-        user_metadata: { full_name: nama, role: peran },
+        data: { full_name: nama, role: peran },
+        channel: "sms",
       });
-      if (!buat.ok) {
-        if (buat.j.error_code === "phone_exists")
-          throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
-        if (buat.j.error_code === "weak_password")
-          throw new GalatAkun(
-            "Kata sandinya terlalu mudah ditebak. Coba gabungkan huruf dan angka.",
-            422,
-          );
-        console.error("Supabase Auth menolak pendaftaran:", buat.j);
+      if (ok) return;
+      if (
+        j.error_code === "phone_exists" ||
+        j.error_code === "user_already_exists"
+      )
+        throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
+      if (j.error_code === "weak_password")
         throw new GalatAkun(
-          "Akun belum bisa dibuat. Coba lagi sebentar lagi.",
-          502,
+          "Kata sandinya terlalu mudah ditebak. Coba gabungkan huruf dan angka.",
+          422,
         );
-      }
+      if (j.error_code === "over_sms_send_rate_limit")
+        throw new GalatAkun(
+          "Kode baru saja dikirim. Tunggu satu menit sebelum minta lagi.",
+          429,
+        );
+      console.error("Supabase Auth menolak pendaftaran:", j);
+      throw new GalatAkun(
+        "Akun belum bisa dibuat. Coba lagi sebentar lagi.",
+        502,
+      );
+    },
 
-      const sesi = await ambilSesi(hp, sandi);
-      /* Akunnya sudah jadi — mendaftar ulang hanya akan dijawab "sudah
-         terdaftar", jadi arahkan langsung ke layar masuk. */
-      if (!sesi)
-        throw new GalatAkun(
-          "Akunmu sudah jadi, tapi belum bisa masuk otomatis. Masuk pakai nomor dan sandi tadi.",
-          502,
-        );
-      return sesi;
+    async verifikasi(hp, kode) {
+      const { ok, j } = await kirim("/verify", {
+        type: "sms",
+        phone: keE164(hp),
+        token: kode,
+      });
+      if (ok && j.access_token && j.refresh_token && j.user?.id)
+        return {
+          penggunaId: j.user.id,
+          sesi: {
+            accessToken: j.access_token,
+            refreshToken: j.refresh_token,
+            expiresIn: j.expires_in ?? 3600,
+          },
+        };
+      /* GoTrue menjawab kode salah dan kode kedaluwarsa dengan galat yang
+         sama (otp_expired); warga cukup tahu harus minta kode baru. */
+      if (j.error_code !== "otp_expired")
+        console.error("Supabase Auth menolak verifikasi:", j);
+      throw new GalatAkun(GALAT_KODE, 422);
     },
 
     /*

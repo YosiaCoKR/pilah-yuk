@@ -779,23 +779,39 @@ console.log(
   "✓ panduan sampah: nama unik, salah-kira tidak menunjuk diri sendiri",
 );
 
-/* --- akun: profil lahir dari Supabase Auth, dan hanya terbaca pemiliknya --- */
+/* --- akun: profil lahir saat nomor/email TERVERIFIKASI, terbaca pemiliknya --- */
 async function daftarAuth(
   id: string,
   kolom: { email?: string; phone?: string },
   meta: object,
 ) {
+  const profilnya = async () =>
+    (
+      await db.query<{
+        full_name: string;
+        phone: string | null;
+        email: string | null;
+        role: string;
+      }>(`select full_name, phone, email, role from users where id = $1`, [id])
+    ).rows[0];
+
   await db.query(
     `insert into auth.users (id, email, phone, raw_user_meta_data) values ($1, $2, $3, $4)`,
     [id, kolom.email ?? null, kolom.phone ?? null, JSON.stringify(meta)],
   );
-  const r = await db.query<{
-    full_name: string;
-    phone: string | null;
-    email: string | null;
-    role: string;
-  }>(`select full_name, phone, email, role from users where id = $1`, [id]);
-  return r.rows[0];
+  /* Belum memasukkan kode SMS: nomor bisa saja milik orang lain, jadi belum
+     ada profil yang bisa menerima pengingat. */
+  assert.equal(
+    await profilnya(),
+    undefined,
+    "akun belum terverifikasi tanpa profil",
+  );
+
+  await db.query(
+    `update auth.users set ${kolom.phone ? "phone" : "email"}_confirmed_at = now() where id = $1`,
+    [id],
+  );
+  return profilnya();
 }
 
 const SITI = "aaaaaaaa-0000-0000-0000-000000000001";
@@ -819,7 +835,19 @@ assert.deepEqual(
   { full_name: "Warga", phone: null, email: "andi@contoh.test", role: "warga" },
   "peran asing → warga, nama kosong → 'Warga', HP kosong → null",
 );
-console.log("✓ akun Auth baru langsung punya profil dan peran");
+/* Konfirmasi ulang (mis. ganti nomor) tidak menimpa profil yang ada. */
+await db.query(
+  `update auth.users set phone_confirmed_at = now(), raw_user_meta_data = '{"full_name":"Palsu"}' where id = $1`,
+  [SITI],
+);
+const tetap = await db.query<{ full_name: string }>(
+  `select full_name from users where id = $1`,
+  [SITI],
+);
+assert.equal(tetap.rows[0].full_name, "Siti");
+console.log(
+  "✓ profil lahir saat terverifikasi, tidak ditimpa konfirmasi ulang",
+);
 
 /** Siapa saja yang terbaca dari `users` lewat PostgREST sebagai `sub`. */
 async function terbacaSebagai(sub: string | null) {

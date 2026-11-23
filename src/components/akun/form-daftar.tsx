@@ -4,6 +4,8 @@ import { useId, useState } from "react";
 import Link from "next/link";
 import {
   GALAT_JARINGAN,
+  normalkanHp,
+  periksaKode,
   periksaPendaftaran,
   type IsiDaftar,
   type Peran,
@@ -40,6 +42,9 @@ export function FormDaftar() {
      masih mengetik huruf pertama. */
   const [dicoba, setDicoba] = useState(false);
   const [galatForm, setGalatForm] = useState<string | null>(null);
+  /* Akun baru aktif setelah kode SMS cocok — membuktikan nomornya memang
+     milik pendaftar, bukan nomor tetangga yang nanti kebanjiran pengingat. */
+  const [tungguKode, setTungguKode] = useState(false);
   const galat = dicoba ? periksaPendaftaran(isi, HP_TERDAFTAR) : {};
 
   const ubah = (k: keyof IsiDaftar) => (v: string) => {
@@ -56,12 +61,20 @@ export function FormDaftar() {
       return;
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
-    /* ponytail: akun cuma disimpan di state layar ini. Ganti dengan panggilan
-       pendaftaran sungguhan saat task backend Fase 4 dikerjakan. */
-    setAkun({ nama: isi.nama.trim(), peran: isi.peran });
+    /* ponytail: belum memanggil POST /api/akun/daftar — kode 6 angka apa pun
+       diterima di data tiruan. Ganti saat layar disambungkan ke API. */
+    setTungguKode(true);
   }
 
   if (akun) return <Selesai {...akun} />;
+  if (tungguKode)
+    return (
+      <LangkahKode
+        hp={normalkanHp(isi.hp)}
+        onCocok={() => setAkun({ nama: isi.nama.trim(), peran: isi.peran })}
+        onUlang={() => setTungguKode(false)}
+      />
+    );
 
   return (
     <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={kirim} noValidate>
@@ -144,6 +157,78 @@ export function FormDaftar() {
           Masuk
         </Link>{" "}
         pakai nomor yang sama.
+      </p>
+    </form>
+  );
+}
+
+function LangkahKode({
+  hp,
+  onCocok,
+  onUlang,
+}: {
+  hp: string;
+  onCocok: () => void;
+  onUlang: () => void;
+}) {
+  const id = useId();
+  const [kode, setKode] = useState("");
+  const [dicoba, setDicoba] = useState(false);
+  const [galatForm, setGalatForm] = useState<string | null>(null);
+  const galat = dicoba ? periksaKode(kode) : undefined;
+
+  function kirim(e: React.FormEvent) {
+    e.preventDefault();
+    setDicoba(true);
+    if (periksaKode(kode)) {
+      document.getElementById(`${id}-kode`)?.focus();
+      return;
+    }
+    if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
+    onCocok();
+  }
+
+  return (
+    <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={kirim} noValidate>
+      <KotakGalat>{galatForm}</KotakGalat>
+      <p
+        aria-live="polite"
+        className="rounded-kartu border border-line bg-card p-3 text-[13px] leading-snug text-ink-2"
+      >
+        Kode 6 angka sudah dikirim lewat SMS ke{" "}
+        <span className="font-semibold text-ink">{hp}</span>. Biasanya sampai
+        dalam satu menit.
+      </p>
+
+      <Isian
+        id={`${id}-kode`}
+        label="Kode dari SMS"
+        bantuan="Akunmu aktif begitu kodenya cocok."
+        value={kode}
+        onChange={(v) => {
+          setKode(v);
+          setGalatForm(null);
+        }}
+        placeholder="123456"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={7}
+        galat={galat}
+      />
+
+      <Tombol type="submit" lebar className="mt-1">
+        Aktifkan akun
+      </Tombol>
+
+      <p className="text-center text-[13px] text-ink-2">
+        Kode tidak datang?{" "}
+        <button
+          type="button"
+          onClick={onUlang}
+          className="font-semibold text-ink underline"
+        >
+          Kirim ulang atau ganti nomor
+        </button>
       </p>
     </form>
   );

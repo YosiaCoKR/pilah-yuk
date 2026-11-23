@@ -13,6 +13,11 @@ const BadanDaftar = t.Object({
   }),
 });
 
+const BadanVerifikasi = t.Object({
+  hp: t.String({ maxLength: 20 }),
+  kode: t.String({ maxLength: 10 }),
+});
+
 const BadanMasuk = t.Object({
   hp: t.String({ maxLength: 20 }),
   sandi: t.String({ maxLength: 72 }),
@@ -94,6 +99,32 @@ export const ruteAkun = (db: Db, penyedia?: PenyediaAkun) =>
           penyedia.daftar({ hp, sandi: body.sandi, nama, peran: body.peran }),
         );
         if (!h.ok) return h.jawab;
+        /* Belum ada sesi: akunnya aktif setelah kode SMS diverifikasi. */
+        return status(202, {
+          data: { hp },
+          pesan: "Kode 6 angka sudah dikirim lewat SMS.",
+        });
+      },
+      { body: BadanDaftar },
+    )
+
+    .post(
+      "/daftar/verifikasi",
+      async ({ body }) => {
+        const kode = body.kode.replace(/\s/g, "");
+        if (!/^\d{6}$/.test(kode))
+          return status(422, {
+            pesan: "Ada isian yang belum benar.",
+            rincian: [
+              { kolom: "kode", pesan: "Kodenya 6 angka, tanpa huruf." },
+            ],
+          });
+        if (!penyedia) return status(503, TUTUP);
+
+        const h = await lewat(() =>
+          penyedia.verifikasi(normalkanHp(body.hp), kode),
+        );
+        if (!h.ok) return h.jawab;
         return status(201, {
           data: {
             pengguna: await profil(db, h.nilai.penggunaId),
@@ -101,7 +132,7 @@ export const ruteAkun = (db: Db, penyedia?: PenyediaAkun) =>
           },
         });
       },
-      { body: BadanDaftar },
+      { body: BadanVerifikasi },
     )
 
     .post(
