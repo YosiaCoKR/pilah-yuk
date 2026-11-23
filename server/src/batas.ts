@@ -1,73 +1,60 @@
+import { eq, lt, sql } from "drizzle-orm";
+import type { Db } from "./db";
+import { percobaanAkun } from "./db/schema";
+
 /**
  * Pembatas percobaan berjendela tetap: `maks` percobaan per `kunci` dalam
- * `jendelaMs`.
+ * `jendelaMs`, disimpan di tabel `percobaan_akun`.
  *
  * Dibutuhkan karena semua permintaan ke Supabase Auth keluar dari IP server
  * ini — batas per-IP milik Supabase tidak membedakan warga, jadi tanpa pagar
  * di sini sandi dan kode SMS satu nomor bisa ditebak terus-menerus.
  *
- * ponytail: disimpan di memori satu proses — hilang saat restart dan tidak
- * dibagi antar-instance. Pindah ke Postgres/Redis kalau API dijalankan lebih
- * dari satu instance.
+ * Di Postgres, bukan di memori: versi memori harus membatasi jumlah kunci,
+ * dan batas itu sendiri jadi celah — membanjiri nomor acak bisa melepas
+ * nomor yang terkunci atau mengunci semua nomor baru.
+ *
+ * ponytail: batas per nomor tanpa dimensi IP/perangkat, jadi orang lain bisa
+ * sengaja menghabiskan jatah satu nomor (terkunci ≤ 1 jam). Tambahkan kunci
+ * per-IP setelah header IP dari platform deploy bisa dipercaya.
  */
-export function buatPembatas(
-  maks: number,
-  jendelaMs: number,
-  jam: () => number = Date.now,
-) {
-  const catatan = new Map<string, { n: number; sampai: number }>();
-  let sapuLagi = 0;
-
+export function buatPembatas(db: Db, maks: number, jendelaMs: number) {
   return {
     /** Catat satu percobaan. `false` = sudah melewati batas, tolak. */
-    boleh(kunci: string): boolean {
-      const sekarang = jam();
-      let c = catatan.get(kunci);
-      if (!c || c.sampai <= sekarang) {
-        /* Peta penuh oleh nomor yang sedang terkunci: tolak kunci baru
-           daripada melepas salah satu kunci itu. */
-        if (!rapikan(sekarang)) return false;
-        c = { n: 0, sampai: sekarang + jendelaMs };
-        catatan.delete(kunci); // pindah ke ujung: urutan Map = urutan umur
-        catatan.set(kunci, c);
-      }
-      c.n++;
-      return c.n <= maks;
+    async boleh(kunci: string): Promise<boolean> {
+      /* Satu upsert atomik: dua permintaan bersamaan tidak bisa membaca
+         hitungan yang sama lalu sama-sama lolos. Jendela yang sudah lewat
+         dimulai ulang di pernyataan yang sama. */
+      const lewat = sql`${percobaanAkun.sampai} <= now()`;
+      const [r] = await db
+        .insert(percobaanAkun)
+        .values({
+          kunci,
+          jumlah: 1,
+          sampai: sql`now() + ${jendelaMs} * interval '1 millisecond'`,
+        })
+        .onConflictDoUpdate({
+          target: percobaanAkun.kunci,
+          set: {
+            jumlah: sql`case when ${lewat} then 1 else ${percobaanAkun.jumlah} + 1 end`,
+            sampai: sql`case when ${lewat} then excluded.sampai else ${percobaanAkun.sampai} end`,
+          },
+        })
+        .returning({ jumlah: percobaanAkun.jumlah });
+
+      /* ponytail: sapuan acak 1% supaya baris basi tidak menumpuk tanpa
+         perlu cron. Pindah ke pg_cron kalau tabelnya ternyata ramai. */
+      if (Math.random() < 0.01)
+        await db
+          .delete(percobaanAkun)
+          .where(lt(percobaanAkun.sampai, sql`now()`));
+
+      return r.jumlah <= maks;
     },
-    /** Berhasil masuk/verifikasi: hitungan nomor ini dimulai dari nol. */
-    lupakan(kunci: string) {
-      catatan.delete(kunci);
+
+    /** Berhasil masuk/verifikasi: hitungan kunci ini dimulai dari nol. */
+    async lupakan(kunci: string) {
+      await db.delete(percobaanAkun).where(eq(percobaanAkun.kunci, kunci));
     },
   };
-
-  /*
-    Peta tidak boleh tumbuh tanpa batas oleh banjir kunci baru. Sapuan penuh
-    paling sering sekali per detik (bukan di tiap panggilan). Di atas
-    MAKS_KUNCI, yang dibuang adalah catatan tertua yang BELUM mencapai batas
-    — nomor yang sedang terkunci tidak pernah dilepas oleh banjir kunci lain.
-    `false` = seluruh peta berisi nomor terkunci.
-
-    ponytail: di memori satu proses; ganti ke Redis kalau API berjalan di
-    lebih dari satu instance.
-  */
-  function rapikan(sekarang: number): boolean {
-    if (catatan.size >= SAPU_MULAI && sekarang >= sapuLagi) {
-      sapuLagi = sekarang + 1000;
-      for (const [k, v] of catatan) if (v.sampai <= sekarang) catatan.delete(k);
-    }
-    while (catatan.size >= MAKS_KUNCI) {
-      let buang: string | undefined;
-      for (const [k, v] of catatan)
-        if (v.n < maks) {
-          buang = k;
-          break;
-        }
-      if (buang === undefined) return false;
-      catatan.delete(buang);
-    }
-    return true;
-  }
 }
-
-const SAPU_MULAI = 10_000;
-const MAKS_KUNCI = 100_000;

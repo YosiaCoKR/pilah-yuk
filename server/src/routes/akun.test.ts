@@ -281,42 +281,40 @@ r = await panggil("POST", "/api/akun/masuk", {
 assert.equal(r.status, 401, "nomor lain tidak ikut terkunci");
 lulus("6x tebak sandi satu nomor → 429, nomor lain tidak terdampak");
 
-/* Jendela & reset, dengan jam yang bisa digeser. */
-let jam = 0;
-const b = buatPembatas(2, 1000, () => jam);
-assert.ok(b.boleh("x") && b.boleh("x"));
-assert.equal(b.boleh("x"), false);
-jam = 1000;
-assert.ok(b.boleh("x"), "jendela lewat → boleh lagi");
-b.boleh("x");
-b.lupakan("x");
-assert.ok(b.boleh("x") && b.boleh("x"), "berhasil masuk → hitungan dari nol");
-lulus("pembatas: jendela 15 menit berlalu / berhasil → dibuka lagi");
-
-/* Banjir kunci baru tidak membuat peta tumbuh tanpa batas, TAPI juga tidak
-   melepas nomor yang sedang terkunci. */
-const banjir = buatPembatas(2, 60_000, () => jam);
-banjir.boleh("terkunci");
-banjir.boleh("terkunci");
-assert.equal(banjir.boleh("terkunci"), false);
-/* Tiap kunci banjir baru sekali dicoba (di bawah batas) → boleh dibuang. */
-for (let i = 0; i < 100_000; i++) banjir.boleh(`k${i}`);
+/* Jendela & reset di tabel percobaan_akun. */
+const b = buatPembatas(db, 2, 60_000);
+assert.ok((await b.boleh("x")) && (await b.boleh("x")));
+assert.equal(await b.boleh("x"), false);
+assert.ok(await b.boleh("y"), "nomor lain berdiri sendiri");
+/* Jendela lewat: geser `sampai` ke masa lalu, seperti 15 menit berlalu. */
+await db
+  .update(schema.percobaanAkun)
+  .set({ sampai: new Date(Date.now() - 1000) })
+  .where(eq(schema.percobaanAkun.kunci, "x"));
+assert.ok(await b.boleh("x"), "jendela lewat → boleh lagi");
+await b.boleh("x");
+await b.lupakan("x");
 assert.ok(
-  banjir.boleh("baru"),
-  "peta penuh kunci biasa tetap menerima kunci baru",
+  (await b.boleh("x")) && (await b.boleh("x")),
+  "berhasil masuk → hitungan dari nol",
+);
+lulus(
+  "pembatas: jendela berlalu / berhasil → dibuka lagi, tiap nomor terpisah",
+);
+
+/* Banyak percobaan sekaligus tetap terhitung semua. PGlite menjalankannya
+   berurutan; di Postgres, ON CONFLICT DO UPDATE yang menjamin dua
+   permintaan serentak tidak membaca hitungan yang sama. */
+const serentak = buatPembatas(db, 3, 60_000);
+const hasil = await Promise.all(
+  Array.from({ length: 10 }, () => serentak.boleh("z")),
 );
 assert.equal(
-  banjir.boleh("terkunci"),
-  false,
-  "banjir kunci tidak membuka nomor terkunci",
+  hasil.filter(Boolean).length,
+  3,
+  "tepat 3 dari 10 percobaan serentak lolos",
 );
-lulus("pembatas: maksimal 100 ribu kunci, nomor terkunci tidak ikut terbuang");
-
-/* Seluruh peta terkunci → kunci baru ditolak (gagal tertutup). */
-const penuh = buatPembatas(0, 60_000, () => jam);
-for (let i = 0; i < 100_000; i++) penuh.boleh(`p${i}`);
-assert.equal(penuh.boleh("baru"), false);
-lulus("pembatas: peta penuh nomor terkunci → kunci baru ditolak");
+lulus("pembatas: 10 percobaan sekaligus → tepat 3 lolos");
 
 r = await panggil("POST", "/api/akun/masuk", {
   body: { hp: "bukan-nomor", sandi: "rahasia123" },

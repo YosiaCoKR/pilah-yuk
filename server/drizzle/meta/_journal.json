@@ -99,6 +99,13 @@
       "when": 1795449234197,
       "tag": "0013_profil_saat_terverifikasi",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795450419014,
+      "tag": "0014_pembatas_percobaan",
+      "breakpoints": true
     }
   ]
 }

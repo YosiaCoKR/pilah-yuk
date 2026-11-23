@@ -118,10 +118,10 @@ export const ruteAkun = (
   penyedia?: PenyediaAkun,
   /* Per nomor HP: 5 tebakan sandi / kode SMS per 15 menit. Kode 6 angka
      punya sejuta kemungkinan; tanpa batas, ia tertebak dalam hitungan jam. */
-  batas = buatPembatas(5, LIMA_BELAS_MENIT),
+  batas = buatPembatas(db, 5, LIMA_BELAS_MENIT),
   /* Per nomor HP: 3 SMS per jam — tiap SMS ada biayanya, dan tanpa ini
      satu nomor bisa dibanjiri kode yang tidak pernah ia minta. */
-  batasSms = buatPembatas(3, 4 * LIMA_BELAS_MENIT),
+  batasSms = buatPembatas(db, 3, 4 * LIMA_BELAS_MENIT),
 ) =>
   new Elysia({ prefix: "/akun" })
     .post(
@@ -145,7 +145,8 @@ export const ruteAkun = (
           .where(eq(users.phone, hp));
         if (ada) return status(409, { pesan: GALAT_HP_TERDAFTAR });
 
-        if (!batasSms.boleh(`sms:${hp}`)) return status(429, KEBANYAKAN);
+        if (!(await batasSms.boleh(`sms:${hp}`)))
+          return status(429, KEBANYAKAN);
         const h = await lewat(() => penyedia.kirimKode(hp));
         if (!h.ok) return h.jawab;
         /* Belum ada sesi: akunnya aktif setelah kode SMS diverifikasi. */
@@ -173,7 +174,7 @@ export const ruteAkun = (
           return status(422, { pesan: "Ada isian yang belum benar.", rincian });
         if (!penyedia) return status(503, TUTUP);
 
-        if (!batas.boleh(`kode:${hp}`)) return status(429, KEBANYAKAN);
+        if (!(await batas.boleh(`kode:${hp}`))) return status(429, KEBANYAKAN);
         const h = await lewat(() =>
           penyedia.verifikasi(hp, kode, {
             sandi: body.sandi,
@@ -182,7 +183,7 @@ export const ruteAkun = (
           }),
         );
         if (!h.ok) return h.jawab;
-        batas.lupakan(`kode:${hp}`);
+        await batas.lupakan(`kode:${hp}`);
 
         /* Trigger membuat profil saat nomor terkonfirmasi — sebelum nama dan
            peran terpasang — jadi keduanya diisi di sini. */
@@ -206,12 +207,12 @@ export const ruteAkun = (
         if (!penyedia) return status(503, TUTUP);
         const hp = normalkanHp(body.hp);
         /* Format diperiksa sebelum pembatas, supaya isian sampah tidak
-           menjadi kunci baru di peta pembatas. */
+           menjadi baris baru di tabel pembatas. */
         if (!POLA_HP.test(hp)) return status(422, GALAT_FORMAT_HP);
-        if (!batas.boleh(`masuk:${hp}`)) return status(429, KEBANYAKAN);
+        if (!(await batas.boleh(`masuk:${hp}`))) return status(429, KEBANYAKAN);
         const h = await lewat(() => penyedia.masuk(hp, body.sandi));
         if (!h.ok) return h.jawab;
-        batas.lupakan(`masuk:${hp}`);
+        await batas.lupakan(`masuk:${hp}`);
         return {
           data: {
             pengguna: await profil(db, h.nilai.penggunaId),
@@ -240,7 +241,8 @@ export const ruteAkun = (
         /* Dihitung untuk SEMUA nomor, sebelum tahu terdaftar atau tidak —
          kalau hanya nomor terdaftar yang bisa kena 429, batasnya sendiri
          jadi petunjuk. */
-        if (!batasSms.boleh(`sms:${hp}`)) return status(429, KEBANYAKAN);
+        if (!(await batasSms.boleh(`sms:${hp}`)))
+          return status(429, KEBANYAKAN);
 
         /* SMS hanya untuk nomor yang punya profil: nomor acak tidak bisa
          dibanjiri kode, dan pendaftaran yang belum selesai tidak bisa
@@ -284,14 +286,14 @@ export const ruteAkun = (
           return status(422, { pesan: "Ada isian yang belum benar.", rincian });
         if (!penyedia) return status(503, TUTUP);
 
-        if (!batas.boleh(`kode:${hp}`)) return status(429, KEBANYAKAN);
+        if (!(await batas.boleh(`kode:${hp}`))) return status(429, KEBANYAKAN);
         const h = await lewat(() =>
           penyedia.aturUlangSandi(hp, kode, body.sandi),
         );
         if (!h.ok) return h.jawab;
-        batas.lupakan(`kode:${hp}`);
+        await batas.lupakan(`kode:${hp}`);
         /* Sandi lama yang mungkin sedang ditebak orang sudah tidak berlaku. */
-        batas.lupakan(`masuk:${hp}`);
+        await batas.lupakan(`masuk:${hp}`);
         return { pesan: "Sandi baru tersimpan. Masuk pakai sandi barumu." };
       },
       { body: BadanAturUlang },

@@ -58,6 +58,7 @@ assert.deepEqual(nama, [
   "channel_schedules",
   "channel_threads",
   "payments",
+  "percobaan_akun",
   "pickup_items",
   "pickups",
   "recurring_schedule_items",
@@ -876,6 +877,23 @@ assert.deepEqual(
   [],
   "anon key tidak membaca nomor HP siapa pun",
 );
+await db.query(
+  `insert into percobaan_akun (kunci, jumlah, sampai) values ('masuk:081311112222', 1, now())`,
+);
+for (const peran of ["anon", "authenticated"]) {
+  await db.exec("begin");
+  try {
+    await db.exec(`set local role ${peran}`);
+    const r = await db.query(`select kunci from percobaan_akun`);
+    assert.equal(
+      r.rows.length,
+      0,
+      `${peran} tidak membaca nomor di percobaan_akun`,
+    );
+  } finally {
+    await db.exec("rollback");
+  }
+}
 console.log("✓ RLS users: profil hanya terbaca pemiliknya");
 
 await db.close();

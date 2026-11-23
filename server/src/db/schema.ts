@@ -1004,6 +1004,25 @@ export type TimeSlot = typeof timeSlots.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type PaymentBaru = typeof payments.$inferInsert;
+/**
+ * Hitungan percobaan masuk / kode SMS / kirim SMS per nomor HP — dipakai
+ * `src/batas.ts`. Di Postgres, bukan di memori proses: tiap nomor berdiri
+ * sendiri (membanjiri nomor lain tidak melepas atau menguncinya), tidak ada
+ * batas jumlah kunci, dan berlaku untuk semua instance API.
+ *
+ * RLS menyala TANPA kebijakan: kuncinya memuat nomor HP, jadi hanya koneksi
+ * server (service role) yang boleh membaca.
+ */
+export const percobaanAkun = pgTable(
+  "percobaan_akun",
+  {
+    kunci: text("kunci").primaryKey(),
+    jumlah: integer("jumlah").notNull(),
+    sampai: timestamp("sampai", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("percobaan_akun_sampai_idx").on(t.sampai)],
+).enableRLS();
+
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type RecurringSchedule = typeof recurringSchedules.$inferSelect;
