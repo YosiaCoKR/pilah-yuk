@@ -12,7 +12,12 @@ import { beriHakSupabase, pasangPrasyaratSupabase } from "../test/bantu";
 
 const DIR = new URL("../../drizzle/", import.meta.url).pathname;
 
-async function gagal(db: PGlite, sql: string, params: unknown[], kenapa: string) {
+async function gagal(
+  db: PGlite,
+  sql: string,
+  params: unknown[],
+  kenapa: string,
+) {
   await assert.rejects(
     () => db.query(sql, params),
     (e: Error) => {
@@ -244,7 +249,10 @@ const bayar = (kolom: string, nilai: string) =>
    values ($1, $2, $3, $4, 45000, 'qris', ${nilai})`;
 
 await db.query(
-  bayar(", paid_at, provider_ref", `'paid', '2026-10-12', '2026-11-12', now(), 'MT-001'`),
+  bayar(
+    ", paid_at, provider_ref",
+    `'paid', '2026-10-12', '2026-11-12', now(), 'MT-001'`,
+  ),
   ["PY-INV-4712", U, langg.rows[0].id, paket.rows[0].id],
 );
 
@@ -258,7 +266,10 @@ await gagal(
    melahirkan tagihan kedua — dan langganan diperpanjang dua kali. */
 await gagal(
   db,
-  bayar(", paid_at, provider_ref", `'paid', '2026-11-12', '2026-12-12', now(), 'MT-001'`),
+  bayar(
+    ", paid_at, provider_ref",
+    `'paid', '2026-11-12', '2026-12-12', now(), 'MT-001'`,
+  ),
   ["PY-INV-4800", U, langg.rows[0].id, paket.rows[0].id],
   "provider_ref kembar (webhook dikirim ulang)",
 );
@@ -285,14 +296,18 @@ await gagal(
 
 /* Beberapa tagihan boleh menggantung tanpa provider_ref — NULL tidak saling
    bentrok di index partial. */
-await db.query(
-  bayar("", `'pending', '2026-11-12', '2026-12-12'`),
-  ["PY-INV-4804", U, langg.rows[0].id, paket.rows[0].id],
-);
-await db.query(
-  bayar("", `'expired', '2026-11-12', '2026-12-12'`),
-  ["PY-INV-4805", U, langg.rows[0].id, paket.rows[0].id],
-);
+await db.query(bayar("", `'pending', '2026-11-12', '2026-12-12'`), [
+  "PY-INV-4804",
+  U,
+  langg.rows[0].id,
+  paket.rows[0].id,
+]);
+await db.query(bayar("", `'expired', '2026-11-12', '2026-12-12'`), [
+  "PY-INV-4805",
+  U,
+  langg.rows[0].id,
+  paket.rows[0].id,
+]);
 console.log("  ✓ tagihan: kode & provider_ref unik, lunas wajib bertanggal");
 
 /* Paket yang pernah ditagih tidak boleh hilang dari sejarah. */
@@ -342,9 +357,10 @@ const belum = await db.query<{
   total_weight_kg: string | null;
   officer_name: string | null;
   proof_url: string | null;
-}>(`select total_weight_kg, officer_name, proof_url from pickups where id = $1`, [
-  pk.rows[0].id,
-]);
+}>(
+  `select total_weight_kg, officer_name, proof_url from pickups where id = $1`,
+  [pk.rows[0].id],
+);
 assert.equal(belum.rows[0].total_weight_kg, null);
 assert.equal(belum.rows[0].officer_name, null);
 assert.equal(belum.rows[0].proof_url, null);
@@ -441,14 +457,17 @@ await gagal(
 
 // Pesanan yang lahir dari jadwal rutin menunjuk balik ke jadwalnya, dan tetap
 // ada sebagai riwayat setelah jadwalnya dihapus.
-await db.query(
-  `update pickups set recurring_schedule_id = $1 where id = $2`,
-  [rutin.rows[0].id, pk.rows[0].id],
-);
+await db.query(`update pickups set recurring_schedule_id = $1 where id = $2`, [
+  rutin.rows[0].id,
+  pk.rows[0].id,
+]);
 await db.query(`delete from recurring_schedules where id = $1`, [
   rutin.rows[0].id,
 ]);
-const yatim = await db.query<{ recurring_schedule_id: string | null; n: number }>(
+const yatim = await db.query<{
+  recurring_schedule_id: string | null;
+  n: number;
+}>(
   `select recurring_schedule_id, count(*)::int as n from pickups
    where id = $1 group by recurring_schedule_id`,
   [pk.rows[0].id],
@@ -491,8 +510,16 @@ const anggotaBaru = await db.query<{ status: string; is_pengurus: boolean }>(
    returning status, is_pengurus`,
   [ch.rows[0].id, u2],
 );
-assert.equal(anggotaBaru.rows[0].status, "menunggu", "gabung belum langsung aktif");
-assert.equal(anggotaBaru.rows[0].is_pengurus, false, "pengurus tidak diberikan diam-diam");
+assert.equal(
+  anggotaBaru.rows[0].status,
+  "menunggu",
+  "gabung belum langsung aktif",
+);
+assert.equal(
+  anggotaBaru.rows[0].is_pengurus,
+  false,
+  "pengurus tidak diberikan diam-diam",
+);
 console.log("  ✓ keanggotaan baru berstatus menunggu & bukan pengurus");
 
 await gagal(
@@ -523,7 +550,11 @@ const sisaKeanggotaan = await db.query<{ n: number }>(
   `select count(*)::int as n from channel_members where channel_id = $1`,
   [chHapus.rows[0].id],
 );
-assert.equal(sisaKeanggotaan.rows[0].n, 0, "keanggotaan ikut terhapus bersama channel");
+assert.equal(
+  sisaKeanggotaan.rows[0].n,
+  0,
+  "keanggotaan ikut terhapus bersama channel",
+);
 console.log("  ✓ keanggotaan ikut terhapus bersama channel-nya");
 
 /* --- jadwal angkut & pengumuman channel --- */
@@ -585,8 +616,16 @@ const arsip = await db.query<{ title: string; author_id: string | null }>(
   `select title, author_id from channel_posts where channel_id = $1`,
   [ch.rows[0].id],
 );
-assert.equal(arsip.rows.length, 1, "pengumuman tetap ada setelah penulis hilang");
-assert.equal(arsip.rows[0].author_id, null, "penulisnya jadi null, bukan ikut terhapus");
+assert.equal(
+  arsip.rows.length,
+  1,
+  "pengumuman tetap ada setelah penulis hilang",
+);
+assert.equal(
+  arsip.rows[0].author_id,
+  null,
+  "penulisnya jadi null, bukan ikut terhapus",
+);
 console.log("  ✓ pengumuman tetap utuh walau penulisnya dihapus");
 
 /* --- papan diskusi --- */
@@ -621,7 +660,11 @@ await db.query(`delete from channel_threads where id = $1`, [utas.rows[0].id]);
 const sisaBalasan = await db.query<{ n: number }>(
   `select count(*)::int as n from channel_replies`,
 );
-assert.equal(sisaBalasan.rows[0].n, 0, "balasan harus ikut terhapus bersama utasnya");
+assert.equal(
+  sisaBalasan.rows[0].n,
+  0,
+  "balasan harus ikut terhapus bersama utasnya",
+);
 console.log("  ✓ hapus utas men-cascade ke balasannya");
 
 /* Percakapan tetap terbaca setelah penulisnya pindah rumah. */
@@ -647,11 +690,19 @@ const tinggal = await db.query<{ n: number; penulis: string | null }>(
   [ch.rows[0].id],
 );
 assert.equal(tinggal.rows[0].n, 1, "utas tetap ada setelah penulisnya hilang");
-assert.equal(tinggal.rows[0].penulis, null, "penulis utas jadi null, bukan ikut terhapus");
+assert.equal(
+  tinggal.rows[0].penulis,
+  null,
+  "penulis utas jadi null, bukan ikut terhapus",
+);
 const balasanTinggal = await db.query<{ n: number; penulis: string | null }>(
   `select count(*)::int as n, min(author_id::text) as penulis from channel_replies`,
 );
-assert.equal(balasanTinggal.rows[0].n, 1, "balasan tetap ada setelah penulisnya hilang");
+assert.equal(
+  balasanTinggal.rows[0].n,
+  1,
+  "balasan tetap ada setelah penulisnya hilang",
+);
 assert.equal(balasanTinggal.rows[0].penulis, null, "penulis balasan jadi null");
 console.log("  ✓ diskusi tetap terbaca walau penulisnya dihapus");
 
@@ -714,9 +765,90 @@ const styro = await db.query<{ n: number; dikira: string | null }>(
   `select count(*)::int as n, min(mistaken_for_id::text) as dikira
    from waste_guide_items where name = 'styrofoam'`,
 );
-assert.equal(styro.rows[0].n, 1, "benda tetap ada setelah tong salah-kira hilang");
-assert.equal(styro.rows[0].dikira, null, "mistaken_for_id jadi null, bukan ikut terhapus");
-console.log("✓ panduan sampah: nama unik, salah-kira tidak menunjuk diri sendiri");
+assert.equal(
+  styro.rows[0].n,
+  1,
+  "benda tetap ada setelah tong salah-kira hilang",
+);
+assert.equal(
+  styro.rows[0].dikira,
+  null,
+  "mistaken_for_id jadi null, bukan ikut terhapus",
+);
+console.log(
+  "✓ panduan sampah: nama unik, salah-kira tidak menunjuk diri sendiri",
+);
+
+/* --- akun: profil lahir dari Supabase Auth, dan hanya terbaca pemiliknya --- */
+async function daftarAuth(
+  id: string,
+  kolom: { email?: string; phone?: string },
+  meta: object,
+) {
+  await db.query(
+    `insert into auth.users (id, email, phone, raw_user_meta_data) values ($1, $2, $3, $4)`,
+    [id, kolom.email ?? null, kolom.phone ?? null, JSON.stringify(meta)],
+  );
+  const r = await db.query<{
+    full_name: string;
+    phone: string | null;
+    email: string | null;
+    role: string;
+  }>(`select full_name, phone, email, role from users where id = $1`, [id]);
+  return r.rows[0];
+}
+
+const SITI = "aaaaaaaa-0000-0000-0000-000000000001";
+const ANDI = "aaaaaaaa-0000-0000-0000-000000000002";
+assert.deepEqual(
+  await daftarAuth(
+    SITI,
+    { phone: "6281399990000" },
+    { full_name: " Siti ", role: "pengurus" },
+  ),
+  { full_name: "Siti", phone: "081399990000", email: null, role: "pengurus" },
+  "nomor 62xx disimpan sebagai 08xx, peran pengurus terbawa",
+);
+/* Peran asing tidak boleh menggagalkan pendaftaran — jatuh ke warga. */
+assert.deepEqual(
+  await daftarAuth(
+    ANDI,
+    { email: "andi@contoh.test", phone: "" },
+    { role: "admin" },
+  ),
+  { full_name: "Warga", phone: null, email: "andi@contoh.test", role: "warga" },
+  "peran asing → warga, nama kosong → 'Warga', HP kosong → null",
+);
+console.log("✓ akun Auth baru langsung punya profil dan peran");
+
+/** Siapa saja yang terbaca dari `users` lewat PostgREST sebagai `sub`. */
+async function terbacaSebagai(sub: string | null) {
+  await db.exec("begin");
+  try {
+    await db.exec(`set local role ${sub ? "authenticated" : "anon"}`);
+    if (sub)
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
+        sub,
+      ]);
+    const r = await db.query<{ id: string }>(
+      `select id from users order by id`,
+    );
+    return r.rows.map((x) => x.id);
+  } finally {
+    await db.exec("rollback");
+  }
+}
+assert.deepEqual(
+  await terbacaSebagai(SITI),
+  [SITI],
+  "warga hanya membaca profilnya sendiri",
+);
+assert.deepEqual(
+  await terbacaSebagai(null),
+  [],
+  "anon key tidak membaca nomor HP siapa pun",
+);
+console.log("✓ RLS users: profil hanya terbaca pemiliknya");
 
 await db.close();
 

@@ -85,6 +85,13 @@
       "when": 1794229864073,
       "tag": "0011_panduan_sampah",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795447790769,
+      "tag": "0012_pengguna_auth",
+      "breakpoints": true
     }
   ]
 }

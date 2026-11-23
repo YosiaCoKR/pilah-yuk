@@ -29,10 +29,7 @@ import {
 
 export const peranPengguna = pgEnum("peran_pengguna", ["warga", "pengurus"]);
 
-export const siklusTagihan = pgEnum("siklus_tagihan", [
-  "mingguan",
-  "bulanan",
-]);
+export const siklusTagihan = pgEnum("siklus_tagihan", ["mingguan", "bulanan"]);
 
 export const statusLangganan = pgEnum("status_langganan", [
   "aktif",
@@ -98,6 +95,22 @@ export const users = pgTable(
       "users_punya_kontak",
       sql`${t.phone} is not null or ${t.email} is not null`,
     ),
+    /*
+      RLS: tiap orang hanya membaca profilnya sendiri.
+
+      Tanpa ini, Supabase membuka tabel `public` ke PostgREST untuk peran
+      anon/authenticated — siapa pun yang memegang anon key (ada di bundel
+      frontend) bisa membaca nomor HP seluruh warga. Nama tetangga yang perlu
+      tampil (daftar anggota, diskusi) dibaca lewat API, bukan dari sini.
+
+      Tidak ada kebijakan tulis: baris dibuat trigger `auth.users` (lihat
+      migrasi 0012) dan diubah lewat API.
+    */
+    pgPolicy("users_baca_diri_sendiri", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.id} = ${authUid}`,
+    }),
   ],
 );
 
@@ -293,7 +306,10 @@ export const channelPosts = pgTable(
   },
   (t) => [
     // Daftar pengumuman satu channel, terbaru di atas.
-    index("channel_posts_channel_dibuat_idx").on(t.channelId, t.createdAt.desc()),
+    index("channel_posts_channel_dibuat_idx").on(
+      t.channelId,
+      t.createdAt.desc(),
+    ),
     check("channel_posts_judul_terisi", sql`length(btrim(${t.title})) > 0`),
     check("channel_posts_isi_terisi", sql`length(btrim(${t.content})) > 0`),
     /* Hanya anggota aktif. Pengumuman menyebut alamat dan kebiasaan rumah
@@ -849,10 +865,7 @@ export const payments = pgTable(
       .on(t.providerRef)
       .where(sql`${t.providerRef} is not null`),
     check("payments_jumlah_wajar", sql`${t.amount} >= 0`),
-    check(
-      "payments_periode_urut",
-      sql`${t.periodEnd} >= ${t.periodStart}`,
-    ),
+    check("payments_periode_urut", sql`${t.periodEnd} >= ${t.periodStart}`),
     /*
       `paid_at` terisi PERSIS saat status `paid`.
 
@@ -995,5 +1008,4 @@ export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type RecurringSchedule = typeof recurringSchedules.$inferSelect;
 export type RecurringScheduleBaru = typeof recurringSchedules.$inferInsert;
-export type RecurringScheduleItem =
-  typeof recurringScheduleItems.$inferSelect;
+export type RecurringScheduleItem = typeof recurringScheduleItems.$inferSelect;

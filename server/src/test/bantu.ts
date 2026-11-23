@@ -28,6 +28,13 @@ const DIR = new URL("../../drizzle/", import.meta.url).pathname;
 export async function pasangPrasyaratSupabase(klien: PGlite) {
   await klien.exec(`
     create schema if not exists auth;
+    /* Hanya kolom yang dibaca trigger profil (migrasi 0012). */
+    create table if not exists auth.users (
+      id uuid primary key,
+      email text,
+      phone text,
+      raw_user_meta_data jsonb
+    );
     create or replace function auth.uid() returns uuid
       language sql stable as $$
         select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
@@ -49,12 +56,13 @@ export async function pasangPrasyaratSupabase(klien: PGlite) {
   `);
 }
 
-/** Hak tabel yang di Supabase sudah terpasang sejak awal. */
+/** Hak tabel yang di Supabase sudah terpasang sejak awal — termasuk `anon`:
+    yang menahan pemegang anon key adalah RLS, bukan GRANT. */
 export async function beriHakSupabase(klien: PGlite) {
   await klien.exec(`
     grant usage on schema public to anon, authenticated, service_role;
     grant select, insert, update, delete on all tables in schema public
-      to authenticated, service_role;
+      to anon, authenticated, service_role;
   `);
 }
 
@@ -93,12 +101,12 @@ export function buatGatewayTiruan(): Gateway & { dimatikan: string[] } {
 /** Server key tiruan: dipakai menghitung tanda tangan webhook di pemeriksaan. */
 export const KUNCI_UJI = "SB-Mid-server-UJICOBA";
 
-export async function siapkan(
-  gateway: Gateway | null = buatGatewayTiruan(),
-) {
+export async function siapkan(gateway: Gateway | null = buatGatewayTiruan()) {
   const klien = new PGlite();
   await pasangPrasyaratSupabase(klien);
-  for (const f of readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort()) {
+  for (const f of readdirSync(DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()) {
     for (const s of readFileSync(join(DIR, f), "utf8").split(
       "--> statement-breakpoint",
     )) {
