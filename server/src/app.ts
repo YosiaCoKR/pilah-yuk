@@ -24,56 +24,62 @@ export function buatApp(
   midtransServerKey?: string,
   akun?: PenyediaAkun,
 ) {
-  return new Elysia()
-    .onError(({ code, error, set }) => {
-      if (code === "VALIDATION") {
-        set.status = 422;
-        /* Satu pesan per kolom (TypeBox bisa melaporkan satu kolom beberapa
+  return (
+    new Elysia()
+      .onError(({ code, error, set }) => {
+        if (code === "VALIDATION") {
+          set.status = 422;
+          /* Satu pesan per kolom (TypeBox bisa melaporkan satu kolom beberapa
            kali), dalam bahasa warga — lihat `pesanValidasi`. */
-        const rincian = new Map<string, string>();
-        for (const e of error.all) {
-          if (!("path" in e)) continue;
-          const kolom = String(e.path).replace(/^\//, "").replaceAll("/", ".");
-          if (!rincian.has(kolom))
-            rincian.set(kolom, pesanValidasi(e.schema as object, e.value));
+          const rincian = new Map<string, string>();
+          for (const e of error.all) {
+            if (!("path" in e)) continue;
+            const kolom = String(e.path)
+              .replace(/^\//, "")
+              .replaceAll("/", ".");
+            if (!rincian.has(kolom))
+              rincian.set(kolom, pesanValidasi(e.schema as object, e.value));
+          }
+          return {
+            pesan: "Ada isian yang belum benar.",
+            rincian: [...rincian].map(([kolom, pesan]) => ({ kolom, pesan })),
+          };
         }
-        return {
-          pesan: "Ada isian yang belum benar.",
-          rincian: [...rincian].map(([kolom, pesan]) => ({ kolom, pesan })),
-        };
-      }
-      /* JSON rusak = salah kiriman klien, bukan gangguan server (dulu 500). */
-      if (code === "PARSE") {
-        set.status = 400;
-        return {
-          pesan:
-            "Data yang dikirim tidak terbaca. Muat ulang halaman lalu coba lagi.",
-        };
-      }
-      if (code === "NOT_FOUND") {
-        set.status = 404;
-        return { pesan: "Alamat URL tidak dikenal." };
-      }
-      /* Status yang sengaja dikembalikan handler (401, 404, …) lewat begitu
+        /* JSON rusak = salah kiriman klien, bukan gangguan server (dulu 500). */
+        if (code === "PARSE") {
+          set.status = 400;
+          return {
+            pesan:
+              "Data yang dikirim tidak terbaca. Muat ulang halaman lalu coba lagi.",
+          };
+        }
+        if (code === "NOT_FOUND") {
+          set.status = 404;
+          return { pesan: "Alamat URL tidak dikenal." };
+        }
+        /* Status yang sengaja dikembalikan handler (401, 404, …) lewat begitu
          saja — kalau tidak, semuanya tertelan jadi 500. */
-      if (error instanceof ElysiaCustomStatusResponse) return error;
+        if (error instanceof ElysiaCustomStatusResponse) return error;
 
-      console.error(error);
-      set.status = 500;
-      return { pesan: "Ada gangguan di server. Coba lagi sebentar lagi." };
-    })
-    .get("/sehat", () => ({ status: "ok" }))
-    .group("/api", (app) =>
-      app
-        .use(ruteAkun(db, akun))
-        .use(ruteAlamat(db))
-        .use(ruteSlotWaktu(db))
-        .use(rutePesanan(db))
-        .use(ruteLangganan(db, gateway))
-        .use(ruteJadwal(db))
-        .use(ruteRiwayat(db))
-        .use(ruteChannel(db))
-        .use(rutePanduan(db))
-        .use(ruteWebhookBayar(db, midtransServerKey)),
-    );
+        console.error(error);
+        set.status = 500;
+        return { pesan: "Ada gangguan di server. Coba lagi sebentar lagi." };
+      })
+      /* Dibaca plugin `auth` di setiap route: token → id warga. */
+      .decorate("kenaliToken", akun?.kenali)
+      .get("/sehat", () => ({ status: "ok" }))
+      .group("/api", (app) =>
+        app
+          .use(ruteAkun(db, akun))
+          .use(ruteAlamat(db))
+          .use(ruteSlotWaktu(db))
+          .use(rutePesanan(db))
+          .use(ruteLangganan(db, gateway))
+          .use(ruteJadwal(db))
+          .use(ruteRiwayat(db))
+          .use(ruteChannel(db))
+          .use(rutePanduan(db))
+          .use(ruteWebhookBayar(db, midtransServerKey)),
+      )
+  );
 }

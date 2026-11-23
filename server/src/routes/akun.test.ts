@@ -186,6 +186,63 @@ assert.equal(tanpaAkun.status, 401);
 assert.deepEqual(salahSandi.body, tanpaAkun.body);
 lulus("sandi salah = nomor tak terdaftar → 401 dengan pesan yang sama");
 
+/* --- token sungguhan: dari /masuk sampai route lain --- */
+r = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: sah.hp, sandi: sah.sandi },
+});
+const { accessToken, refreshToken } = r.body.data.sesi;
+const idSiti = r.body.data.pengguna.id;
+r = await panggil("GET", "/api/alamat", {
+  kepala: { authorization: `Bearer ${accessToken}` },
+});
+assert.equal(r.status, 200, "token dari /masuk diterima route lain");
+assert.deepEqual(r.body.data, []);
+
+r = await panggil("GET", "/api/alamat", {
+  kepala: { authorization: "Bearer palsu" },
+});
+assert.equal(r.status, 401);
+assert.match(r.body.pesan, /Sesi kamu sudah berakhir/);
+
+/* Token menang atas header pengembangan: tidak bisa "meminjam" id lain. */
+r = await panggil("GET", "/api/alamat", {
+  sebagai: "22222222-2222-2222-2222-222222222222",
+  kepala: { authorization: "Bearer palsu" },
+});
+assert.equal(r.status, 401, "token palsu tidak jatuh ke jalur x-user-id");
+
+/* Di produksi (tanpa AUTH_DEV_HEADER) header x-user-id diabaikan. */
+delete process.env.AUTH_DEV_HEADER;
+try {
+  r = await panggil("GET", "/api/alamat", { sebagai: idSiti });
+  assert.equal(r.status, 401, "x-user-id tidak berlaku di produksi");
+  r = await panggil("GET", "/api/alamat", {
+    kepala: { authorization: `Bearer ${accessToken}` },
+  });
+  assert.equal(r.status, 200, "token tetap berlaku di produksi");
+} finally {
+  process.env.AUTH_DEV_HEADER = "1";
+}
+
+r = await panggil("POST", "/api/akun/segarkan", { body: { refreshToken } });
+assert.equal(r.status, 200);
+assert.ok(r.body.data.sesi.accessToken);
+r = await panggil("POST", "/api/akun/segarkan", {
+  body: { refreshToken: "basi" },
+});
+assert.equal(r.status, 401);
+
+await panggil("POST", "/api/akun/keluar", {
+  kepala: { authorization: `Bearer ${accessToken}` },
+});
+r = await panggil("GET", "/api/alamat", {
+  kepala: { authorization: `Bearer ${accessToken}` },
+});
+assert.equal(r.status, 401, "setelah keluar, token itu ditolak");
+lulus(
+  "Bearer token: diterima route lain, palsu/keluar → 401, x-user-id mati di produksi",
+);
+
 /* --- keluar --- */
 const keluar = (authorization?: string) =>
   panggil("POST", "/api/akun/keluar", {
@@ -193,10 +250,15 @@ const keluar = (authorization?: string) =>
   });
 r = await keluar("Bearer token-siti");
 assert.equal(r.status, 204);
-assert.deepEqual(akun.dicabut, ["token-siti"], "sesi dicabut di Supabase");
+assert.ok(akun.dicabut.includes("token-siti"), "sesi dicabut di Supabase");
+const sebelum = akun.dicabut.length;
 r = await keluar();
 assert.equal(r.status, 204, "tanpa sesi pun keluar tetap berhasil");
-assert.equal(akun.dicabut.length, 1, "tanpa token tidak ada yang dicabut");
+assert.equal(
+  akun.dicabut.length,
+  sebelum,
+  "tanpa token tidak ada yang dicabut",
+);
 lulus("POST /akun/keluar → 204, refresh token dicabut");
 
 /* --- lupa sandi --- */
@@ -386,7 +448,7 @@ globalThis.fetch = (async (url: string, init: RequestInit) => {
     url,
     method: init.method,
     izin: (init.headers as Record<string, string>).authorization,
-    badan: JSON.parse(String(init.body)),
+    badan: init.body ? JSON.parse(String(init.body)) : {},
   });
   const [kode, isi] = jawab(url);
   return new Response(JSON.stringify(isi), { status: kode });
@@ -509,6 +571,37 @@ try {
   jawab = () => [500, {}];
   await assert.rejects(supa.keluar("t"), (e: GalatAkun) => e.status === 502);
   lulus("klien GoTrue: sandi salah → 401, token basi tetap dianggap keluar");
+
+  terkirim.length = 0;
+  jawab = () => [200, { id: "u1" }];
+  assert.equal(await supa.kenali("tok"), "u1");
+  assert.equal(terkirim[0].method, "GET");
+  assert.equal(terkirim[0].izin, "Bearer tok");
+  assert.equal(await supa.kenali("tok"), "u1");
+  assert.equal(
+    terkirim.length,
+    1,
+    "jawaban disimpan sebentar, tidak tiap request",
+  );
+  jawab = (url) => (url.endsWith("/user") ? [401, {}] : [200, {}]);
+  await supa.keluar("tok");
+  assert.equal(
+    await supa.kenali("tok"),
+    null,
+    "keluar langsung menghapus ingatan token",
+  );
+  lulus(
+    "klien GoTrue: kenali → GET /user, disimpan sebentar, keluar menghapusnya",
+  );
+
+  jawab = () => [
+    200,
+    { access_token: "a2", refresh_token: "r2", user: { id: "u1" } },
+  ];
+  assert.equal((await supa.segarkan("r1")).sesi.accessToken, "a2");
+  jawab = () => [400, { error_code: "refresh_token_not_found" }];
+  await assert.rejects(supa.segarkan("r1"), (e: GalatAkun) => e.status === 401);
+  lulus("klien GoTrue: segarkan → sesi baru, refresh basi → 401");
 } finally {
   globalThis.fetch = asli;
 }

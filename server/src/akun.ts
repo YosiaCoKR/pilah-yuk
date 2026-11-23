@@ -40,6 +40,10 @@ export type PenyediaAkun = {
   masuk: (hp: string, sandi: string) => Promise<Masuk>;
   /** Cabut sesi pemilik token (refresh token tidak bisa dipakai lagi). */
   keluar: (accessToken: string) => Promise<void>;
+  /** Tukar refresh token dengan sesi baru (access token berumur ±1 jam). */
+  segarkan: (refreshToken: string) => Promise<Masuk>;
+  /** Id pemilik access token, atau `null` bila token palsu/kedaluwarsa/dicabut. */
+  kenali: (accessToken: string) => Promise<string | null>;
 };
 
 /** Penolakan yang pesannya boleh dibaca warga apa adanya. */
@@ -72,6 +76,9 @@ export const keE164 = (hp: string) => `62${hp.slice(1)}`;
 export const GALAT_MASUK =
   "Nomor HP atau kata sandinya tidak cocok. Periksa lagi, atau atur ulang sandi lewat tautan di bawah.";
 
+export const GALAT_SESI_HABIS =
+  "Sesi kamu sudah berakhir. Masuk lagi untuk melanjutkan.";
+
 export const GALAT_KODE =
   "Kodenya salah atau sudah kedaluwarsa. Periksa SMS terbaru, atau minta kode baru.";
 
@@ -92,6 +99,8 @@ export function buatSupabaseAuth(
   url: string,
   serviceKey: string,
 ): PenyediaAkun {
+  /** Token → pemilik, untuk `kenali`. Hanya di memori proses ini. */
+  const kenal = new Map<string, { id: string; sampai: number }>();
   const kepala = {
     apikey: serviceKey,
     authorization: `Bearer ${serviceKey}`,
@@ -111,7 +120,7 @@ export function buatSupabaseAuth(
         headers: token
           ? { ...kepala, authorization: `Bearer ${token}` }
           : kepala,
-        body: JSON.stringify(badan),
+        body: method === "GET" ? undefined : JSON.stringify(badan),
         signal: AbortSignal.timeout(10_000),
       });
       return {
@@ -255,9 +264,49 @@ export function buatSupabaseAuth(
     async keluar(accessToken) {
       /* 401/403 = token sudah tidak berlaku: sesinya memang sudah mati,
          jadi keluarnya dianggap berhasil. */
+      kenal.delete(accessToken); // keluar langsung berlaku di instance ini
       const { ok, kode } = await kirim("/logout?scope=local", {}, accessToken);
       if (!ok && kode !== 401 && kode !== 403)
         throw new GalatAkun("Belum bisa keluar. Coba lagi sebentar lagi.", 502);
+    },
+
+    async segarkan(refreshToken) {
+      const { ok, j } = await kirim("/token?grant_type=refresh_token", {
+        refresh_token: refreshToken,
+      });
+      if (!ok || !j.access_token || !j.refresh_token || !j.user?.id)
+        throw new GalatAkun(GALAT_SESI_HABIS, 401);
+      return {
+        penggunaId: j.user.id,
+        sesi: {
+          accessToken: j.access_token,
+          refreshToken: j.refresh_token,
+          expiresIn: j.expires_in ?? 3600,
+        },
+      };
+    },
+
+    /*
+      Token ditanyakan ke Supabase (`GET /user`), bukan diverifikasi sendiri:
+      berlaku untuk kunci tanda tangan apa pun (HS256 lama maupun ES256/RS256
+      baru) dan sesi yang sudah dicabut ikut ditolak.
+
+      ponytail: jawaban disimpan 30 detik per token supaya tidak tiap
+      request memanggil Supabase — sesi yang dicabut di instance lain masih
+      lolos paling lama 30 detik. Ganti ke verifikasi JWKS lokal kalau
+      latensinya terasa.
+    */
+    async kenali(accessToken) {
+      const sekarang = Date.now();
+      const ingat = kenal.get(accessToken);
+      if (ingat && ingat.sampai > sekarang) return ingat.id;
+
+      const { ok, j } = await kirim("/user", undefined, accessToken, "GET");
+      const id = ok ? j.id : undefined;
+      if (!id) return null;
+      if (kenal.size > 10_000) kenal.clear();
+      kenal.set(accessToken, { id, sampai: sekarang + 30_000 });
+      return id;
     },
   };
 }

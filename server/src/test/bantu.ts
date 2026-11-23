@@ -10,6 +10,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import {
   GalatAkun,
   GALAT_KODE,
+  GALAT_SESI_HABIS,
   GALAT_MASUK,
   keE164,
   type PenyediaAkun,
@@ -125,7 +126,7 @@ export function buatAkunTiruan(
     penggunaId: id,
     sesi: {
       accessToken: `akses-${id}`,
-      refreshToken: "segar",
+      refreshToken: `segar-${id}`,
       expiresIn: 3600,
     },
   });
@@ -167,6 +168,16 @@ export function buatAkunTiruan(
     },
     async keluar(token) {
       dicabut.push(token);
+    },
+    async segarkan(refreshToken) {
+      const id = refreshToken.replace(/^segar-/, "");
+      if (refreshToken === id) throw new GalatAkun(GALAT_SESI_HABIS, 401);
+      return sesi(id);
+    },
+    /* Token tiruan berbentuk `akses-<id>`; yang sudah dikeluarkan ditolak. */
+    async kenali(token) {
+      if (!token.startsWith("akses-") || dicabut.includes(token)) return null;
+      return token.slice("akses-".length);
     },
   };
 }

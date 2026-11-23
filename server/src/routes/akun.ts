@@ -299,6 +299,23 @@ export const ruteAkun = (
       { body: BadanAturUlang },
     )
 
+    /* Access token berumur ±1 jam; frontend menukar refresh token di sini
+     alih-alih menyuruh warga masuk ulang. */
+    .post(
+      "/segarkan",
+      async ({ body }) => {
+        if (!penyedia) return status(503, TUTUP);
+        const h = await lewat(() => penyedia.segarkan(body.refreshToken));
+        if (!h.ok) return h.jawab;
+        return { data: { sesi: h.nilai.sesi } };
+      },
+      {
+        body: t.Object({
+          refreshToken: t.String({ minLength: 1, maxLength: 2000 }),
+        }),
+      },
+    )
+
     /* Mencabut refresh token di Supabase. Tanpa token pun dijawab 204: yang
      diminta warga ("aku sudah keluar") memang sudah benar. */
     .post("/keluar", async ({ headers }) => {
