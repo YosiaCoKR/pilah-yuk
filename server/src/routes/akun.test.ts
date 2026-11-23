@@ -10,10 +10,11 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { GalatAkun, buatSupabaseAuth } from "../akun";
 import { buatPembatas } from "../batas";
+import { pesanValidasi } from "../galat";
 import { buatApp } from "../app";
 import { KODE_UJI, lulus, siapkan } from "../test/bantu";
 
-const { db, panggil, schema, akun } = await siapkan();
+const { db, app, panggil, schema, akun } = await siapkan();
 const sah = {
   nama: " Siti ",
   hp: "+62 813-1111-2222",
@@ -321,6 +322,57 @@ r = await panggil("POST", "/api/akun/masuk", {
   body: { hp: "bukan-nomor", sandi: "rahasia123" },
 });
 assert.equal(r.status, 422, "isian sampah ditolak sebelum menyentuh pembatas");
+
+/* --- galat validasi API: bahasa warga, satu pesan per kolom --- */
+r = await panggil("POST", "/api/akun/daftar", { body: { nama: "Siti" } });
+assert.equal(r.status, 422);
+assert.deepEqual(r.body.rincian, [
+  { kolom: "peran", pesan: "Pilih daftar sebagai warga atau pengurus RT/RW." },
+  { kolom: "hp", pesan: "Wajib diisi." },
+  { kolom: "sandi", pesan: "Wajib diisi." },
+]);
+for (const x of r.body.rincian)
+  assert.doesNotMatch(x.pesan, /Expected/, "tidak ada pesan TypeBox mentah");
+
+const rusak = await app.handle(
+  new Request("http://local/api/akun/masuk", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{hp:",
+  }),
+);
+assert.equal(rusak.status, 400, "JSON rusak = salah kiriman, bukan 500");
+lulus("validasi API: pesan Indonesia, kolom tidak ganda, JSON rusak → 400");
+
+/* Integer dibungkus Elysia jadi anyOf(angka | teks-angka): tetap dibaca
+   sebagai angka, bukan "pilihan tidak dikenal". */
+const integer = {
+  minimum: 1,
+  anyOf: [
+    { type: "string", format: "integer" },
+    { type: "integer", minimum: 1 },
+  ],
+};
+assert.equal(pesanValidasi(integer, 0), "Minimal 1.");
+assert.equal(pesanValidasi(integer, "dua"), "Harus berupa angka.");
+assert.equal(
+  pesanValidasi({ anyOf: [{ const: "a" }, { const: "b" }] }, "c"),
+  "Pilihannya tidak dikenal.",
+);
+assert.equal(
+  pesanValidasi({ type: "string", format: "uuid" }, "x"),
+  "Pilihannya tidak dikenal.",
+);
+assert.equal(
+  pesanValidasi({ type: "array", minItems: 1 }, []),
+  "Pilih minimal 1.",
+);
+assert.equal(pesanValidasi({ type: "boolean" }, "ya"), "Harus ya atau tidak.");
+assert.equal(
+  pesanValidasi({ type: "string", error: "Pesan khusus." }, 1),
+  "Pesan khusus.",
+);
+lulus("pesanValidasi: angka, pilihan, uuid, daftar, pesan khusus");
 
 /* --- klien GoTrue: bentuk permintaan & arti jawabannya (fetch distub) --- */
 const asli = globalThis.fetch;

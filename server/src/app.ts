@@ -1,6 +1,7 @@
 import { Elysia, ElysiaCustomStatusResponse } from "elysia";
 import type { PenyediaAkun } from "./akun";
 import type { Db } from "./db";
+import { pesanValidasi } from "./galat";
 import type { Gateway } from "./pembayaran";
 import { ruteAkun } from "./routes/akun";
 import { ruteAlamat } from "./routes/alamat";
@@ -27,14 +28,26 @@ export function buatApp(
     .onError(({ code, error, set }) => {
       if (code === "VALIDATION") {
         set.status = 422;
+        /* Satu pesan per kolom (TypeBox bisa melaporkan satu kolom beberapa
+           kali), dalam bahasa warga — lihat `pesanValidasi`. */
+        const rincian = new Map<string, string>();
+        for (const e of error.all) {
+          if (!("path" in e)) continue;
+          const kolom = String(e.path).replace(/^\//, "").replaceAll("/", ".");
+          if (!rincian.has(kolom))
+            rincian.set(kolom, pesanValidasi(e.schema as object, e.value));
+        }
         return {
           pesan: "Ada isian yang belum benar.",
-          rincian: error.all
-            .filter((e) => "path" in e)
-            .map((e) => ({
-              kolom: String(e.path).replace(/^\//, ""),
-              pesan: e.message,
-            })),
+          rincian: [...rincian].map(([kolom, pesan]) => ({ kolom, pesan })),
+        };
+      }
+      /* JSON rusak = salah kiriman klien, bukan gangguan server (dulu 500). */
+      if (code === "PARSE") {
+        set.status = 400;
+        return {
+          pesan:
+            "Data yang dikirim tidak terbaca. Muat ulang halaman lalu coba lagi.",
         };
       }
       if (code === "NOT_FOUND") {
