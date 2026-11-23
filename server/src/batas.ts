@@ -24,7 +24,9 @@ export function buatPembatas(
       const sekarang = jam();
       let c = catatan.get(kunci);
       if (!c || c.sampai <= sekarang) {
-        rapikan(sekarang);
+        /* Peta penuh oleh nomor yang sedang terkunci: tolak kunci baru
+           daripada melepas salah satu kunci itu. */
+        if (!rapikan(sekarang)) return false;
         c = { n: 0, sampai: sekarang + jendelaMs };
         catatan.delete(kunci); // pindah ke ujung: urutan Map = urutan umur
         catatan.set(kunci, c);
@@ -40,23 +42,30 @@ export function buatPembatas(
 
   /*
     Peta tidak boleh tumbuh tanpa batas oleh banjir kunci baru. Sapuan penuh
-    paling sering sekali per detik (bukan di tiap panggilan), dan di atas
-    MAKS_KUNCI catatan tertua dibuang.
+    paling sering sekali per detik (bukan di tiap panggilan). Di atas
+    MAKS_KUNCI, yang dibuang adalah catatan tertua yang BELUM mencapai batas
+    — nomor yang sedang terkunci tidak pernah dilepas oleh banjir kunci lain.
+    `false` = seluruh peta berisi nomor terkunci.
 
-    ponytail: membuang catatan tertua berarti banjir 100 ribu nomor berbeda
-    bisa menghapus hitungan satu nomor. Untuk itu penyerang perlu 100 ribu
-    panggilan ke Supabase Auth — jauh lebih mahal dari 5 tebakan yang
-    didapatnya. Ganti ke penyimpanan bersama (Redis) bila itu berubah.
+    ponytail: di memori satu proses; ganti ke Redis kalau API berjalan di
+    lebih dari satu instance.
   */
-  function rapikan(sekarang: number) {
-    if (catatan.size < SAPU_MULAI || sekarang < sapuLagi) {
-      if (catatan.size < MAKS_KUNCI) return;
-    } else {
+  function rapikan(sekarang: number): boolean {
+    if (catatan.size >= SAPU_MULAI && sekarang >= sapuLagi) {
       sapuLagi = sekarang + 1000;
       for (const [k, v] of catatan) if (v.sampai <= sekarang) catatan.delete(k);
     }
-    while (catatan.size >= MAKS_KUNCI)
-      catatan.delete(catatan.keys().next().value!);
+    while (catatan.size >= MAKS_KUNCI) {
+      let buang: string | undefined;
+      for (const [k, v] of catatan)
+        if (v.n < maks) {
+          buang = k;
+          break;
+        }
+      if (buang === undefined) return false;
+      catatan.delete(buang);
+    }
+    return true;
   }
 }
 

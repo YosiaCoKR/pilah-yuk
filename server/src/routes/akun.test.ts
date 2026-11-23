@@ -292,17 +292,30 @@ b.lupakan("x");
 assert.ok(b.boleh("x") && b.boleh("x"), "berhasil masuk → hitungan dari nol");
 lulus("pembatas: jendela 15 menit berlalu / berhasil → dibuka lagi");
 
-/* Banjir kunci baru tidak membuat peta tumbuh tanpa batas: di atas 100 ribu
-   kunci, yang tertua dibuang. */
-const banjir = buatPembatas(1, 60_000, () => jam);
-banjir.boleh("pertama");
-assert.equal(banjir.boleh("pertama"), false);
+/* Banjir kunci baru tidak membuat peta tumbuh tanpa batas, TAPI juga tidak
+   melepas nomor yang sedang terkunci. */
+const banjir = buatPembatas(2, 60_000, () => jam);
+banjir.boleh("terkunci");
+banjir.boleh("terkunci");
+assert.equal(banjir.boleh("terkunci"), false);
+/* Tiap kunci banjir baru sekali dicoba (di bawah batas) → boleh dibuang. */
 for (let i = 0; i < 100_000; i++) banjir.boleh(`k${i}`);
 assert.ok(
-  banjir.boleh("pertama"),
-  "kunci tertua terbuang → peta tetap terbatas",
+  banjir.boleh("baru"),
+  "peta penuh kunci biasa tetap menerima kunci baru",
 );
-lulus("pembatas: maksimal 100 ribu kunci, yang tertua dibuang");
+assert.equal(
+  banjir.boleh("terkunci"),
+  false,
+  "banjir kunci tidak membuka nomor terkunci",
+);
+lulus("pembatas: maksimal 100 ribu kunci, nomor terkunci tidak ikut terbuang");
+
+/* Seluruh peta terkunci → kunci baru ditolak (gagal tertutup). */
+const penuh = buatPembatas(0, 60_000, () => jam);
+for (let i = 0; i < 100_000; i++) penuh.boleh(`p${i}`);
+assert.equal(penuh.boleh("baru"), false);
+lulus("pembatas: peta penuh nomor terkunci → kunci baru ditolak");
 
 r = await panggil("POST", "/api/akun/masuk", {
   body: { hp: "bukan-nomor", sandi: "rahasia123" },
