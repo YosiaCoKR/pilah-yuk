@@ -16,6 +16,7 @@ export function buatPembatas(
   jam: () => number = Date.now,
 ) {
   const catatan = new Map<string, { n: number; sampai: number }>();
+  let sapuLagi = 0;
 
   return {
     /** Catat satu percobaan. `false` = sudah melewati batas, tolak. */
@@ -23,14 +24,12 @@ export function buatPembatas(
       const sekarang = jam();
       let c = catatan.get(kunci);
       if (!c || c.sampai <= sekarang) {
+        rapikan(sekarang);
         c = { n: 0, sampai: sekarang + jendelaMs };
+        catatan.delete(kunci); // pindah ke ujung: urutan Map = urutan umur
         catatan.set(kunci, c);
       }
       c.n++;
-      /* Sapu catatan basi sesekali supaya peta tidak tumbuh tanpa batas. */
-      if (catatan.size > 10_000)
-        for (const [k, v] of catatan)
-          if (v.sampai <= sekarang) catatan.delete(k);
       return c.n <= maks;
     },
     /** Berhasil masuk/verifikasi: hitungan nomor ini dimulai dari nol. */
@@ -38,4 +37,28 @@ export function buatPembatas(
       catatan.delete(kunci);
     },
   };
+
+  /*
+    Peta tidak boleh tumbuh tanpa batas oleh banjir kunci baru. Sapuan penuh
+    paling sering sekali per detik (bukan di tiap panggilan), dan di atas
+    MAKS_KUNCI catatan tertua dibuang.
+
+    ponytail: membuang catatan tertua berarti banjir 100 ribu nomor berbeda
+    bisa menghapus hitungan satu nomor. Untuk itu penyerang perlu 100 ribu
+    panggilan ke Supabase Auth — jauh lebih mahal dari 5 tebakan yang
+    didapatnya. Ganti ke penyimpanan bersama (Redis) bila itu berubah.
+  */
+  function rapikan(sekarang: number) {
+    if (catatan.size < SAPU_MULAI || sekarang < sapuLagi) {
+      if (catatan.size < MAKS_KUNCI) return;
+    } else {
+      sapuLagi = sekarang + 1000;
+      for (const [k, v] of catatan) if (v.sampai <= sekarang) catatan.delete(k);
+    }
+    while (catatan.size >= MAKS_KUNCI)
+      catatan.delete(catatan.keys().next().value!);
+  }
 }
+
+const SAPU_MULAI = 10_000;
+const MAKS_KUNCI = 100_000;

@@ -27,6 +27,19 @@ const BadanVerifikasi = t.Composite([
   t.Object({ kode: t.String({ maxLength: 10 }) }),
 ]);
 
+const BadanLupa = t.Object({ hp: t.String({ maxLength: 20 }) });
+const BadanAturUlang = t.Object({
+  hp: t.String({ maxLength: 20 }),
+  kode: t.String({ maxLength: 10 }),
+  sandi: t.String({ maxLength: 72 }),
+});
+
+/* Sama untuk nomor terdaftar maupun tidak — layar lupa sandi bukan alat
+   untuk menebak nomor siapa yang punya akun. */
+const KODE_MUNGKIN_DIKIRIM = {
+  pesan: "Kalau nomor ini terdaftar, kode 6 angka sudah dikirim lewat SMS.",
+};
+
 const BadanMasuk = t.Object({
   hp: t.String({ maxLength: 20 }),
   sandi: t.String({ maxLength: 72 }),
@@ -90,6 +103,12 @@ async function lewat<T>(kerja: () => Promise<T>) {
 }
 
 const LIMA_BELAS_MENIT = 15 * 60_000;
+const GALAT_FORMAT_HP = {
+  pesan: "Ada isian yang belum benar.",
+  rincian: [
+    { kolom: "hp", pesan: "Pakai nomor HP Indonesia, mis. 0812 3456 7890." },
+  ],
+};
 const KEBANYAKAN = {
   pesan: "Terlalu banyak percobaan untuk nomor ini. Coba lagi 15 menit lagi.",
 };
@@ -184,10 +203,11 @@ export const ruteAkun = (
     .post(
       "/masuk",
       async ({ body }) => {
-        /* Format nomor salah tetap dijawab dengan pesan gabungan yang sama —
-         tidak perlu memberi petunjuk apa pun sebelum Supabase menjawab. */
         if (!penyedia) return status(503, TUTUP);
         const hp = normalkanHp(body.hp);
+        /* Format diperiksa sebelum pembatas, supaya isian sampah tidak
+           menjadi kunci baru di peta pembatas. */
+        if (!POLA_HP.test(hp)) return status(422, GALAT_FORMAT_HP);
         if (!batas.boleh(`masuk:${hp}`)) return status(429, KEBANYAKAN);
         const h = await lewat(() => penyedia.masuk(hp, body.sandi));
         if (!h.ok) return h.jawab;
@@ -200,6 +220,81 @@ export const ruteAkun = (
         };
       },
       { body: BadanMasuk },
+    )
+
+    .post(
+      "/lupa-sandi",
+      async ({ body }) => {
+        const hp = normalkanHp(body.hp);
+        if (!POLA_HP.test(hp))
+          return status(422, {
+            pesan: "Ada isian yang belum benar.",
+            rincian: [
+              {
+                kolom: "hp",
+                pesan: "Pakai nomor HP Indonesia, mis. 0812 3456 7890.",
+              },
+            ],
+          });
+        if (!penyedia) return status(503, TUTUP);
+        /* Dihitung untuk SEMUA nomor, sebelum tahu terdaftar atau tidak —
+         kalau hanya nomor terdaftar yang bisa kena 429, batasnya sendiri
+         jadi petunjuk. */
+        if (!batasSms.boleh(`sms:${hp}`)) return status(429, KEBANYAKAN);
+
+        /* SMS hanya untuk nomor yang punya profil: nomor acak tidak bisa
+         dibanjiri kode, dan pendaftaran yang belum selesai tidak bisa
+         diaktifkan lewat jalur ini. */
+        const [ada] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.phone, hp));
+        if (ada) {
+          const h = await lewat(() => penyedia.kirimKode(hp, false));
+          /* Kegagalan penyedia tidak diteruskan: jawabannya akan berbeda dari
+           nomor tak terdaftar. Warga tinggal menekan "kirim ulang". */
+          if (!h.ok)
+            console.error(
+              "Kode lupa sandi gagal dikirim untuk satu nomor terdaftar.",
+            );
+        }
+        return status(202, KODE_MUNGKIN_DIKIRIM);
+      },
+      { body: BadanLupa },
+    )
+
+    .post(
+      "/lupa-sandi/atur-ulang",
+      async ({ body }) => {
+        const hp = normalkanHp(body.hp);
+        const kode = body.kode.replace(/\s/g, "");
+        const rincian: Rincian = [];
+        if (!POLA_HP.test(hp)) rincian.push(GALAT_FORMAT_HP.rincian[0]);
+        if (!/^\d{6}$/.test(kode))
+          rincian.push({
+            kolom: "kode",
+            pesan: "Kodenya 6 angka, tanpa huruf.",
+          });
+        if (body.sandi.length < 8)
+          rincian.push({
+            kolom: "sandi",
+            pesan: "Minimal 8 karakter biar tidak mudah ditebak.",
+          });
+        if (rincian.length)
+          return status(422, { pesan: "Ada isian yang belum benar.", rincian });
+        if (!penyedia) return status(503, TUTUP);
+
+        if (!batas.boleh(`kode:${hp}`)) return status(429, KEBANYAKAN);
+        const h = await lewat(() =>
+          penyedia.aturUlangSandi(hp, kode, body.sandi),
+        );
+        if (!h.ok) return h.jawab;
+        batas.lupakan(`kode:${hp}`);
+        /* Sandi lama yang mungkin sedang ditebak orang sudah tidak berlaku. */
+        batas.lupakan(`masuk:${hp}`);
+        return { pesan: "Sandi baru tersimpan. Masuk pakai sandi barumu." };
+      },
+      { body: BadanAturUlang },
     )
 
     /* Mencabut refresh token di Supabase. Tanpa token pun dijawab 204: yang

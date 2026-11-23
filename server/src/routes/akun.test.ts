@@ -198,6 +198,62 @@ assert.equal(r.status, 204, "tanpa sesi pun keluar tetap berhasil");
 assert.equal(akun.dicabut.length, 1, "tanpa token tidak ada yang dicabut");
 lulus("POST /akun/keluar → 204, refresh token dicabut");
 
+/* --- lupa sandi --- */
+const lupaTerdaftar = await panggil("POST", "/api/akun/lupa-sandi", {
+  body: { hp: "+62 813-1111-2222" },
+});
+const lupaAsing = await panggil("POST", "/api/akun/lupa-sandi", {
+  body: { hp: "0899 1234 0000" },
+});
+assert.equal(lupaTerdaftar.status, 202);
+assert.deepEqual(
+  lupaTerdaftar,
+  lupaAsing,
+  "jawaban identik: tidak membocorkan nomor terdaftar",
+);
+assert.deepEqual(
+  akun.dikirimKode.slice(-1),
+  ["081311112222"],
+  "SMS hanya ke nomor yang punya akun",
+);
+assert.equal(akun.dikirimKode.includes("089912340000"), false);
+lulus(
+  "POST /akun/lupa-sandi → 202 sama untuk semua nomor, SMS hanya ke yang terdaftar",
+);
+
+r = await panggil("POST", "/api/akun/lupa-sandi/atur-ulang", {
+  body: { hp: sah.hp, kode: "000000", sandi: "sandibaru99" },
+});
+assert.equal(r.status, 422);
+r = await panggil("POST", "/api/akun/lupa-sandi/atur-ulang", {
+  body: { hp: "0899 1234 0000", kode: KODE_UJI, sandi: "sandibaru99" },
+});
+assert.equal(
+  r.status,
+  422,
+  "nomor tak terdaftar = kode salah, tidak ada petunjuk lain",
+);
+r = await panggil("POST", "/api/akun/lupa-sandi/atur-ulang", {
+  body: { hp: sah.hp, kode: KODE_UJI, sandi: "sandibaru99" },
+});
+assert.equal(r.status, 200, JSON.stringify(r.body));
+assert.ok(
+  akun.dicabut.some((t) => t.startsWith("semua:")),
+  "semua sesi lama dicabut",
+);
+r = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: sah.hp, sandi: sah.sandi },
+});
+assert.equal(r.status, 401, "sandi lama tidak berlaku lagi");
+r = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: sah.hp, sandi: "sandibaru99" },
+});
+assert.equal(r.status, 200);
+lulus("POST /akun/lupa-sandi/atur-ulang → sandi baru aktif, sesi lama dicabut");
+
+/* Kembalikan sandi awal supaya pemeriksaan di bawah tetap memakai `sah`. */
+await akun.aturUlangSandi("081311112222", KODE_UJI, sah.sandi);
+
 /* --- tebak-tebakan dibatasi per nomor --- */
 /* Masuk yang berhasil menghapus hitungan sisa pemeriksaan di atas. */
 r = await panggil("POST", "/api/akun/masuk", {
@@ -235,6 +291,23 @@ b.boleh("x");
 b.lupakan("x");
 assert.ok(b.boleh("x") && b.boleh("x"), "berhasil masuk → hitungan dari nol");
 lulus("pembatas: jendela 15 menit berlalu / berhasil → dibuka lagi");
+
+/* Banjir kunci baru tidak membuat peta tumbuh tanpa batas: di atas 100 ribu
+   kunci, yang tertua dibuang. */
+const banjir = buatPembatas(1, 60_000, () => jam);
+banjir.boleh("pertama");
+assert.equal(banjir.boleh("pertama"), false);
+for (let i = 0; i < 100_000; i++) banjir.boleh(`k${i}`);
+assert.ok(
+  banjir.boleh("pertama"),
+  "kunci tertua terbuang → peta tetap terbatas",
+);
+lulus("pembatas: maksimal 100 ribu kunci, yang tertua dibuang");
+
+r = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: "bukan-nomor", sandi: "rahasia123" },
+});
+assert.equal(r.status, 422, "isian sampah ditolak sebelum menyentuh pembatas");
 
 /* --- klien GoTrue: bentuk permintaan & arti jawabannya (fetch distub) --- */
 const asli = globalThis.fetch;
@@ -323,6 +396,37 @@ try {
   );
   lulus(
     "klien GoTrue: /otp tanpa sandi → /verify → PUT /user dengan token warga",
+  );
+
+  terkirim.length = 0;
+  jawab = () => [200, {}];
+  await supa.kirimKode("081311112222", false);
+  assert.equal(
+    terkirim[0].badan.create_user,
+    false,
+    "lupa sandi tidak membuat akun baru",
+  );
+
+  terkirim.length = 0;
+  jawab = (url) =>
+    url.endsWith("/verify")
+      ? [200, { access_token: "a", refresh_token: "r", user: { id: "u1" } }]
+      : [200, {}];
+  await supa.aturUlangSandi("081311112222", "123456", "sandibaru99");
+  assert.deepEqual(
+    terkirim.map((x) => [
+      x.url.replace("https://x.supabase.co/auth/v1", ""),
+      x.izin,
+    ]),
+    [
+      ["/verify", "Bearer kunci"],
+      ["/user", "Bearer a"],
+      ["/logout?scope=global", "Bearer a"],
+    ],
+  );
+  assert.deepEqual(terkirim[1].badan, { password: "sandibaru99" });
+  lulus(
+    "klien GoTrue: atur ulang → /verify → PUT /user → logout semua perangkat",
   );
 
   jawab = () => [400, { error_code: "invalid_credentials" }];

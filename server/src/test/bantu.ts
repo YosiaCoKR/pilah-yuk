@@ -114,12 +114,13 @@ export const KODE_UJI = "123456";
  */
 export function buatAkunTiruan(
   klien: PGlite,
-): PenyediaAkun & { dicabut: string[] } {
+): PenyediaAkun & { dicabut: string[]; dikirimKode: string[] } {
   const sandiPer = new Map<
     string,
     { id: string; sandi: string | null; aktif: boolean }
   >();
   const dicabut: string[] = [];
+  const dikirimKode: string[] = [];
   const sesi = (id: string) => ({
     penggunaId: id,
     sesi: {
@@ -130,9 +131,11 @@ export function buatAkunTiruan(
   });
   return {
     dicabut,
-    async kirimKode(hp) {
+    dikirimKode,
+    async kirimKode(hp, buatAkun = true) {
       /* Seperti `/otp` + create_user: akun tanpa sandi, belum terkonfirmasi. */
-      if (sandiPer.has(hp)) return;
+      dikirimKode.push(hp);
+      if (sandiPer.has(hp) || !buatAkun) return;
       const r = await klien.query<{ id: string }>(
         `insert into auth.users (id, phone) values (gen_random_uuid(), $1) returning id`,
         [keE164(hp)],
@@ -148,6 +151,13 @@ export function buatAkunTiruan(
       );
       Object.assign(akun, { sandi, aktif: true });
       return sesi(akun.id);
+    },
+    async aturUlangSandi(hp, kode, sandi) {
+      const akun = sandiPer.get(hp);
+      if (!akun?.aktif || kode !== KODE_UJI)
+        throw new GalatAkun(GALAT_KODE, 422);
+      akun.sandi = sandi;
+      dicabut.push(`semua:${akun.id}`);
     },
     async masuk(hp, sandi) {
       const akun = sandiPer.get(hp);

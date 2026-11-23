@@ -28,9 +28,14 @@ export type PenyediaAkun = {
    * mendaftar nomor yang sama, dan sandinya ikut aktif saat korban
    * memasukkan kode.
    */
-  kirimKode: (hp: string) => Promise<void>;
+  kirimKode: (hp: string, buatAkun?: boolean) => Promise<void>;
   /** Kode cocok → akun aktif, lalu sandi + nama + peran dipasang. */
   verifikasi: (hp: string, kode: string, isian: IsianAkun) => Promise<Masuk>;
+  /**
+   * Lupa sandi: kode cocok → sandi baru dipasang dan SEMUA sesi dicabut,
+   * supaya siapa pun yang memegang sandi lama ikut terlempar keluar.
+   */
+  aturUlangSandi: (hp: string, kode: string, sandi: string) => Promise<void>;
   /** `hp` sudah dinormalkan ke 08xx. */
   masuk: (hp: string, sandi: string) => Promise<Masuk>;
   /** Cabut sesi pemilik token (refresh token tidak bisa dipakai lagi). */
@@ -140,14 +145,40 @@ export function buatSupabaseAuth(
     };
   }
 
+  /** Tukar kode SMS dengan sesi. Kode salah/kedaluwarsa → GALAT_KODE. */
+  async function tukarKode(hp: string, kode: string): Promise<Masuk> {
+    const v = await kirim("/verify", {
+      type: "sms",
+      phone: keE164(hp),
+      token: kode,
+    });
+    const j = v.j;
+    if (!v.ok || !j.access_token || !j.refresh_token || !j.user?.id) {
+      /* GoTrue menjawab kode salah dan kode kedaluwarsa dengan galat yang
+           sama (otp_expired); warga cukup tahu harus minta kode baru. */
+      if (j.error_code !== "otp_expired")
+        console.error("Supabase Auth menolak verifikasi:", j);
+      throw new GalatAkun(GALAT_KODE, 422);
+    }
+
+    return {
+      penggunaId: j.user.id,
+      sesi: {
+        accessToken: j.access_token,
+        refreshToken: j.refresh_token,
+        expiresIn: j.expires_in ?? 3600,
+      },
+    };
+  }
+
   return {
-    async kirimKode(hp) {
+    async kirimKode(hp, buatAkun = true) {
       /* `/otp` + create_user: akun tanpa sandi dibuat bila belum ada, kode
-         dikirim. Pastikan di Supabase: Auth → Providers → Phone aktif dan
-         provider SMS terpasang. */
+         dikirim. Lupa sandi memakai create_user false. Pastikan di Supabase:
+         Auth → Providers → Phone aktif dan provider SMS terpasang. */
       const { ok, j } = await kirim("/otp", {
         phone: keE164(hp),
-        create_user: true,
+        create_user: buatAkun,
         channel: "sms",
       });
       if (ok) return;
@@ -164,26 +195,14 @@ export function buatSupabaseAuth(
     },
 
     async verifikasi(hp, kode, { sandi, nama, peran }) {
-      const v = await kirim("/verify", {
-        type: "sms",
-        phone: keE164(hp),
-        token: kode,
-      });
-      const j = v.j;
-      if (!v.ok || !j.access_token || !j.refresh_token || !j.user?.id) {
-        /* GoTrue menjawab kode salah dan kode kedaluwarsa dengan galat yang
-           sama (otp_expired); warga cukup tahu harus minta kode baru. */
-        if (j.error_code !== "otp_expired")
-          console.error("Supabase Auth menolak verifikasi:", j);
-        throw new GalatAkun(GALAT_KODE, 422);
-      }
+      const masuk = await tukarKode(hp, kode);
 
       /* Baru sekarang sandi dipasang — dengan token milik warga ini sendiri,
          jadi tidak ada jalan menitipkan sandi ke nomor orang lain. */
       const pasang = await kirim(
         "/user",
         { password: sandi, data: { full_name: nama, role: peran } },
-        j.access_token,
+        masuk.sesi.accessToken,
         "PUT",
       );
       if (!pasang.ok) {
@@ -196,14 +215,30 @@ export function buatSupabaseAuth(
         );
       }
 
-      return {
-        penggunaId: j.user.id,
-        sesi: {
-          accessToken: j.access_token,
-          refreshToken: j.refresh_token,
-          expiresIn: j.expires_in ?? 3600,
-        },
-      };
+      return masuk;
+    },
+
+    async aturUlangSandi(hp, kode, sandi) {
+      const { sesi } = await tukarKode(hp, kode);
+      const pasang = await kirim(
+        "/user",
+        { password: sandi },
+        sesi.accessToken,
+        "PUT",
+      );
+      if (!pasang.ok) {
+        console.error("Supabase Auth menolak sandi baru:", pasang.j);
+        throw new GalatAkun(
+          pasang.j.error_code === "weak_password"
+            ? "Sandinya terlalu mudah ditebak. Minta kode baru, lalu coba sandi lain."
+            : "Sandi baru belum tersimpan. Minta kode baru lalu coba lagi.",
+          502,
+        );
+      }
+      /* scope=global: semua refresh token akun ini mati, di perangkat mana
+         pun. Kalau gagal, sandinya tetap sudah berganti — catat saja. */
+      const cabut = await kirim("/logout?scope=global", {}, sesi.accessToken);
+      if (!cabut.ok) console.error("Gagal mencabut sesi lama:", cabut.j);
     },
 
     /*
