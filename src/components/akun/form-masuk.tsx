@@ -63,6 +63,11 @@ export function FormMasuk() {
         autoComplete="current-password"
         galat={galat.sandi}
       />
+      <p className="-mt-2 text-right text-[13px]">
+        <Link href="/lupa-sandi" className="font-semibold text-ink underline">
+          Lupa kata sandi?
+        </Link>
+      </p>
 
       <Tombol type="submit" lebar className="mt-1">
         Masuk
@@ -90,8 +95,7 @@ function Selesai() {
           Selamat datang kembali
         </h2>
         <p className="mx-auto mt-1 max-w-[30ch] text-[14px] leading-snug text-ink-2">
-          Jadwal jemput dan tagihan langgananmu sudah menunggu di halaman
-          utama.
+          Jadwal jemput dan tagihan langgananmu sudah menunggu di halaman utama.
         </p>
         <div className="mt-5 space-y-2">
           <TombolLink href="/" lebar>

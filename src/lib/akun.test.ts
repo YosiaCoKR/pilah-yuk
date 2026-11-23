@@ -1,6 +1,12 @@
 /** Jalankan: npm run test:akun */
 import assert from "node:assert/strict";
-import { normalkanHp, periksaMasuk, periksaPendaftaran } from "./akun";
+import {
+  normalkanHp,
+  periksaAturUlang,
+  periksaLupa,
+  periksaMasuk,
+  periksaPendaftaran,
+} from "./akun";
 import { HP_TERDAFTAR } from "./mock";
 
 /* Semua cara menulis satu nomor harus jatuh ke bentuk yang sama, kalau tidak
@@ -57,3 +63,21 @@ assert.ok(periksaMasuk({ ...masukSah, sandi: "pendek1" }).sandi);
 assert.deepEqual(periksaMasuk({ ...masukSah, hp: "0899 0000 0000" }), {});
 
 console.log("masuk: semua pemeriksaan lulus");
+
+/* Lupa sandi: nomor yang belum terdaftar pun lolos langkah 1 — jawaban yang
+   sama untuk semua nomor mencegah penebakan akun. */
+assert.equal(periksaLupa("0899 0000 0000"), undefined);
+assert.equal(periksaLupa("+62 812-3456-7890"), undefined);
+assert.ok(periksaLupa(""));
+assert.ok(periksaLupa("0212345678"));
+
+const ulangSah = { kode: "123 456", sandi: "barubaru1", ulang: "barubaru1" };
+assert.deepEqual(periksaAturUlang(ulangSah), {});
+assert.ok(periksaAturUlang({ ...ulangSah, kode: "12345" }).kode);
+assert.ok(periksaAturUlang({ ...ulangSah, kode: "12a456" }).kode);
+assert.ok(
+  periksaAturUlang({ ...ulangSah, sandi: "pendek", ulang: "pendek" }).sandi,
+);
+assert.ok(periksaAturUlang({ ...ulangSah, ulang: "barubaru2" }).ulang);
+
+console.log("lupa sandi: semua pemeriksaan lulus");

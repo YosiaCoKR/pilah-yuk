@@ -28,6 +28,8 @@ export function normalkanHp(hp: string): string {
   return angka;
 }
 
+const POLA_HP = /^08\d{8,12}$/;
+
 export function periksaPendaftaran(
   isi: IsiDaftar,
   /** Nomor yang sudah dipakai — dari data tiruan, nanti dari server. */
@@ -45,7 +47,7 @@ export function periksaPendaftaran(
   const hp = normalkanHp(isi.hp);
   if (!hp) {
     g.hp = "Nomor HP dipakai untuk pengingat jemput, jadi wajib diisi.";
-  } else if (!/^08\d{8,12}$/.test(hp)) {
+  } else if (!POLA_HP.test(hp)) {
     g.hp = "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
   } else if (terdaftar.includes(hp)) {
     g.hp = "Nomor ini sudah terdaftar. Masuk saja pakai nomor yang sama.";
@@ -82,7 +84,7 @@ export function periksaMasuk(
   const hp = normalkanHp(isi.hp);
   if (!hp) {
     g.hp = "Masuk pakai nomor HP yang dipakai saat mendaftar.";
-  } else if (!/^08\d{8,12}$/.test(hp)) {
+  } else if (!POLA_HP.test(hp)) {
     g.hp = "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
   } else if (terdaftar.length && !terdaftar.includes(hp)) {
     g.hp = "Nomor ini belum punya akun. Daftar dulu, gratis.";
@@ -91,5 +93,35 @@ export function periksaMasuk(
   if (!isi.sandi) g.sandi = "Kata sandinya belum diisi.";
   else if (isi.sandi.length < 8) g.sandi = "Sandi minimal 8 karakter.";
 
+  return g;
+}
+
+/**
+ * Langkah 1 lupa sandi: cukup format nomornya. Sengaja TIDAK mencocokkan ke
+ * daftar akun — jawaban "kode dikirim kalau nomor terdaftar" sama untuk semua
+ * nomor, supaya halaman ini tidak bisa dipakai menebak nomor warga.
+ */
+export function periksaLupa(hp: string): string | undefined {
+  const n = normalkanHp(hp);
+  if (!n) return "Tulis nomor HP yang dipakai saat mendaftar.";
+  if (!POLA_HP.test(n)) return "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
+}
+
+export type IsiAturUlang = { kode: string; sandi: string; ulang: string };
+export type GalatAturUlang = Partial<Record<keyof IsiAturUlang, string>>;
+
+/** Langkah 2: kode 6 angka dari SMS + sandi baru yang diketik dua kali. */
+export function periksaAturUlang(isi: IsiAturUlang): GalatAturUlang {
+  const g: GalatAturUlang = {};
+  const kode = isi.kode.replace(/\s/g, "");
+  if (!kode) g.kode = "Masukkan kode 6 angka dari SMS.";
+  else if (!/^\d{6}$/.test(kode)) g.kode = "Kodenya 6 angka, tanpa huruf.";
+
+  if (!isi.sandi) g.sandi = "Tulis kata sandi barumu.";
+  else if (isi.sandi.length < 8)
+    g.sandi = "Minimal 8 karakter biar tidak mudah ditebak.";
+
+  if (isi.sandi && isi.ulang !== isi.sandi)
+    g.ulang = "Belum sama dengan sandi di atas — ketik ulang pelan-pelan.";
   return g;
 }
