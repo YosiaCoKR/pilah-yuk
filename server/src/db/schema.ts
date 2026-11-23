@@ -152,6 +152,13 @@ export const rwChannels = pgTable(
               and ${t.latitude} between -90 and 90
               and ${t.longitude} between -180 and 180)`,
     ),
+    /* RLS: direktori channel boleh dibaca warga yang masuk; membuat dan
+       mengubah channel hanya lewat server. */
+    pgPolicy("rw_channels_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
   ],
 );
 
@@ -453,6 +460,14 @@ export const addresses = pgTable(
               and ${t.latitude} between -90 and 90
               and ${t.longitude} between -180 and 180)`,
     ),
+    /* RLS: alamat rumah hanya terbaca pemiliknya. Tanpa ini, anon key di
+       bundel frontend cukup untuk membaca — bahkan mengubah — alamat semua
+       warga lewat PostgREST. Menulis tetap lewat API. */
+    pgPolicy("addresses_baca_milik_sendiri", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.userId} = ${authUid}`,
+    }),
   ],
 );
 
@@ -588,6 +603,12 @@ export const timeSlots = pgTable(
     index("time_slots_channel_urut_idx").on(t.channelId, t.sortOrder),
     check("time_slots_kapasitas_positif", sql`${t.capacity} > 0`),
     check("time_slots_jam_urut", sql`${t.endTime} > ${t.startTime}`),
+    /* RLS: daftar slot jam bukan rahasia; menulisnya hanya lewat server. */
+    pgPolicy("time_slots_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
   ],
 );
 
@@ -960,6 +981,13 @@ export const recurringSchedules = pgTable(
       "recurring_schedules_jeda_konsisten",
       sql`${t.pausedUntil} is null or ${t.isPaused}`,
     ),
+    /* RLS: jadwal rutin memuat alamat & hari warga ada di rumah — hanya
+       pemiliknya yang membaca. Menulis tetap lewat API. */
+    pgPolicy("recurring_schedules_baca_milik_sendiri", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.userId} = ${authUid}`,
+    }),
   ],
 );
 
@@ -981,6 +1009,15 @@ export const recurringScheduleItems = pgTable(
       t.scheduleId,
       t.categoryId,
     ),
+    /* RLS: ikut jadwal induknya — hanya pemilik jadwal yang membaca. */
+    pgPolicy("recurring_schedule_items_ikut_induk", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`exists (
+        select 1 from "recurring_schedules" s
+        where s.id = ${t.scheduleId} and s.user_id = (select auth.uid())
+      )`,
+    }),
   ],
 );
 

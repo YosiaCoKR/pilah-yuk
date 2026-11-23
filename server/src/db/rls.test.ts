@@ -74,10 +74,7 @@ assert.equal(semua.length, 2, "koneksi service role tidak dibatasi RLS");
 lulus("koneksi API (service role) tetap melihat semua penjemputan");
 
 /* --- warga hanya melihat miliknya --- */
-const barisRina = await sebagai<{ id: string }>(
-  RINA,
-  "select id from pickups",
-);
+const barisRina = await sebagai<{ id: string }>(RINA, "select id from pickups");
 assert.deepEqual(
   barisRina.map((b) => b.id),
   [milikRina.id],
@@ -86,7 +83,10 @@ assert.deepEqual(
 lulus("warga hanya melihat penjemputan miliknya");
 
 const barisAgus = await sebagai<{ id: string }>(AGUS, "select id from pickups");
-assert.deepEqual(barisAgus.map((b) => b.id), [milikAgus.id]);
+assert.deepEqual(
+  barisAgus.map((b) => b.id),
+  [milikAgus.id],
+);
 lulus("warga lain melihat miliknya sendiri, bukan milik tetangga");
 
 /* Menyebut id orang lain secara langsung pun tetap kosong — kebijakan
@@ -95,7 +95,11 @@ const nekat = await sebagai<{ id: string }>(
   RINA,
   `select id from pickups where id = '${milikAgus.id}'`,
 );
-assert.deepEqual(nekat, [], "menyebut id tetangga langsung tetap tidak terbaca");
+assert.deepEqual(
+  nekat,
+  [],
+  "menyebut id tetangga langsung tetap tidak terbaca",
+);
 lulus("menyebut id penjemputan tetangga langsung → kosong");
 
 /* --- tanpa identitas: tidak ada baris --- */
@@ -339,7 +343,11 @@ const diperpanjang = await sebagai<{ id: string }>(
   RINA,
   `update subscriptions set end_date = '2027-12-31' returning id`,
 );
-assert.deepEqual(diperpanjang, [], "tidak ada langganan yang bisa diubah warga");
+assert.deepEqual(
+  diperpanjang,
+  [],
+  "tidak ada langganan yang bisa diubah warga",
+);
 const [masihSama] = await db
   .select({ endDate: schema.subscriptions.endDate })
   .from(schema.subscriptions)
@@ -426,6 +434,61 @@ const ditandai = await sebagai<{ id: string }>(
 );
 assert.deepEqual(ditandai, [], "warga tidak bisa menandai tagihan lunas");
 lulus("warga tidak bisa membuat atau menandai tagihannya lunas");
+
+/* --- alamat, jadwal rutin, channel, slot: dulu tanpa RLS sama sekali --- */
+const alamatRina = await sebagai<{ full_address: string }>(
+  RINA,
+  `select full_address from addresses`,
+);
+assert.deepEqual(
+  alamatRina.map((a) => a.full_address),
+  ["Jl. Kenanga No. 12"],
+  "warga hanya membaca alamatnya sendiri",
+);
+const dihapus = await sebagai<{ id: string }>(
+  RINA,
+  `delete from addresses returning id`,
+);
+assert.deepEqual(
+  dihapus,
+  [],
+  "warga tidak bisa menghapus alamat lewat PostgREST",
+);
+const channelDiubah = await sebagai<{ id: string }>(
+  RINA,
+  `update rw_channels set name = 'diretas' returning id`,
+);
+assert.deepEqual(
+  channelDiubah,
+  [],
+  "channel tidak bisa diubah lewat PostgREST",
+);
+const slotTerbaca = await sebagai<{ id: string }>(
+  RINA,
+  `select id from time_slots`,
+);
+assert.equal(slotTerbaca.length, 1, "slot jam tetap terbaca warga yang masuk");
+
+/* Anon key (bundel frontend) tidak membaca alamat siapa pun. */
+await klien.exec("begin");
+try {
+  await klien.exec("set local role anon");
+  for (const tabel of [
+    "addresses",
+    "recurring_schedules",
+    "recurring_schedule_items",
+    "rw_channels",
+    "time_slots",
+  ]) {
+    const r = await klien.query(`select 1 from ${tabel}`);
+    assert.equal(r.rows.length, 0, `anon tidak membaca ${tabel}`);
+  }
+} finally {
+  await klien.exec("rollback");
+}
+lulus(
+  "alamat & jadwal hanya terbaca pemiliknya; anon dan tulis-langsung ditolak",
+);
 
 await klien.close();
 console.log("\nSemua pemeriksaan RLS penjemputan, langganan & tagihan lulus.");
