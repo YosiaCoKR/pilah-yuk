@@ -2,18 +2,35 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
-import { periksaPendaftaran, type IsiDaftar } from "@/lib/akun";
+import { periksaPendaftaran, type IsiDaftar, type Peran } from "@/lib/akun";
 import { HP_TERDAFTAR } from "@/lib/mock";
 import { Isian, Kartu } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
 import { IkonCentang } from "../ikon";
 
-const KOSONG: IsiDaftar = { nama: "", hp: "", sandi: "" };
+/* Mayoritas pendaftar warga biasa, jadi itu bawaannya — pengurus cukup
+   sekali ketuk untuk menggantinya. */
+const KOSONG: IsiDaftar = { nama: "", hp: "", sandi: "", peran: "warga" };
+
+const PERAN: { nilai: Peran; judul: string; ket: string }[] = [
+  {
+    nilai: "warga",
+    judul: "Warga rumah tangga",
+    ket: "Pesan jemput, atur jadwal rutin, bayar langganan.",
+  },
+  {
+    nilai: "pengurus",
+    judul: "Pengurus RT/RW",
+    ket: "Kelola channel, umumkan jadwal angkut, atur anggota.",
+  },
+];
 
 export function FormDaftar() {
   const id = useId();
   const [isi, setIsi] = useState<IsiDaftar>(KOSONG);
-  const [nama, setNama] = useState<string | null>(null);
+  const [akun, setAkun] = useState<Pick<IsiDaftar, "nama" | "peran"> | null>(
+    null,
+  );
   /* Validasi baru muncul setelah tombol ditekan — warga jangan ditegur saat
      masih mengetik huruf pertama. */
   const [dicoba, setDicoba] = useState(false);
@@ -32,10 +49,10 @@ export function FormDaftar() {
     }
     /* ponytail: akun cuma disimpan di state layar ini. Ganti dengan panggilan
        pendaftaran sungguhan saat task backend Fase 4 dikerjakan. */
-    setNama(isi.nama.trim());
+    setAkun({ nama: isi.nama.trim(), peran: isi.peran });
   }
 
-  if (nama) return <Selesai nama={nama} />;
+  if (akun) return <Selesai {...akun} />;
 
   return (
     <form className="space-y-4 px-4 pb-10 pt-5" onSubmit={kirim} noValidate>
@@ -75,6 +92,38 @@ export function FormDaftar() {
         galat={galat.sandi}
       />
 
+      <fieldset className="space-y-1.5">
+        <legend className="text-[14px] font-semibold">Daftar sebagai</legend>
+        <p className="text-[13px] leading-snug text-ink-2">
+          Pengurus tetap bisa memesan jemput untuk rumahnya sendiri.
+        </p>
+        <div className="grid gap-2 pt-0.5">
+          {PERAN.map((p) => (
+            <label
+              key={p.nilai}
+              className="flex cursor-pointer items-start gap-3 rounded-kartu border border-line bg-card p-3 has-[:checked]:border-hijau has-[:checked]:bg-hijau-tipis has-[:focus-visible]:outline-2"
+            >
+              <input
+                type="radio"
+                name={`${id}-peran`}
+                value={p.nilai}
+                checked={isi.peran === p.nilai}
+                onChange={() => setIsi((x) => ({ ...x, peran: p.nilai }))}
+                className="mt-1 size-4 accent-hijau"
+              />
+              <span>
+                <span className="block text-[15px] font-semibold">
+                  {p.judul}
+                </span>
+                <span className="block text-[13px] leading-snug text-ink-2">
+                  {p.ket}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <Tombol type="submit" lebar className="mt-1">
         Daftar
       </Tombol>
@@ -90,7 +139,8 @@ export function FormDaftar() {
   );
 }
 
-function Selesai({ nama }: { nama: string }) {
+function Selesai({ nama, peran }: Pick<IsiDaftar, "nama" | "peran">) {
+  const pengurus = peran === "pengurus";
   return (
     <div className="px-4 pb-10 pt-8">
       <Kartu className="p-6 text-center motion-safe:animate-[terbit_.45s_cubic-bezier(.2,.8,.2,1)_both]">
@@ -101,12 +151,13 @@ function Selesai({ nama }: { nama: string }) {
           Akun siap, {nama}
         </h2>
         <p className="mx-auto mt-1 max-w-[30ch] text-[14px] leading-snug text-ink-2">
-          Sekarang pesan jemput pertamamu, atau gabung dulu ke channel RT/RW
-          sesuai alamat rumah.
+          {pengurus
+            ? "Buka channel RT/RW-mu untuk mengumumkan jadwal angkut dan menyetujui warga yang ingin bergabung."
+            : "Sekarang pesan jemput pertamamu, atau gabung dulu ke channel RT/RW sesuai alamat rumah."}
         </p>
         <div className="mt-5 space-y-2">
-          <TombolLink href="/pesan" lebar>
-            Pesan jemput
+          <TombolLink href={pengurus ? "/channel" : "/pesan"} lebar>
+            {pengurus ? "Buka channel" : "Pesan jemput"}
           </TombolLink>
           <TombolLink href="/" varian="garis" lebar>
             Ke halaman utama

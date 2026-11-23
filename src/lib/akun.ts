@@ -5,7 +5,15 @@
  * supaya halaman masuk nanti memakai aturan nomor HP yang persis sama.
  */
 
-export type IsiDaftar = { nama: string; hp: string; sandi: string };
+/** Sama dengan enum `peran_pengguna` di server. */
+export type Peran = "warga" | "pengurus";
+
+export type IsiDaftar = {
+  nama: string;
+  hp: string;
+  sandi: string;
+  peran: Peran;
+};
 export type GalatDaftar = Partial<Record<keyof IsiDaftar, string>>;
 
 /**

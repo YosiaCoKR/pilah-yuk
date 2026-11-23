@@ -9,10 +9,20 @@ assert.equal(normalkanHp("+62 812-3456-7890"), "081234567890");
 assert.equal(normalkanHp("6281234567890"), "081234567890");
 assert.equal(normalkanHp("0812 3456 7890"), "081234567890");
 
-const sah = { nama: "Siti", hp: "0813 1111 2222", sandi: "rahasia123" };
+const sah = {
+  nama: "Siti",
+  hp: "0813 1111 2222",
+  sandi: "rahasia123",
+  peran: "warga" as const,
+};
 assert.deepEqual(periksaPendaftaran(sah, HP_TERDAFTAR), {});
 
-const kosong = periksaPendaftaran({ nama: "", hp: "", sandi: "" });
+const kosong = periksaPendaftaran({
+  nama: "",
+  hp: "",
+  sandi: "",
+  peran: "warga",
+});
 assert.ok(kosong.nama && kosong.hp && kosong.sandi);
 
 assert.ok(periksaPendaftaran({ ...sah, nama: "Si" }).nama);
@@ -47,4 +57,3 @@ assert.ok(periksaMasuk({ ...masukSah, sandi: "pendek1" }).sandi);
 assert.deepEqual(periksaMasuk({ ...masukSah, hp: "0899 0000 0000" }), {});
 
 console.log("masuk: semua pemeriksaan lulus");
-
