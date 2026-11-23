@@ -62,7 +62,9 @@ export function FormDaftar() {
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
     /* ponytail: belum memanggil POST /api/akun/daftar — kode 6 angka apa pun
-       diterima di data tiruan. Ganti saat layar disambungkan ke API. */
+       diterima di data tiruan. Saat disambungkan ke API, langkah kode
+       mengirim ULANG nama, sandi, dan peran bersama kodenya: server baru
+       memasang sandi setelah nomornya terbukti. */
     setTungguKode(true);
   }
 

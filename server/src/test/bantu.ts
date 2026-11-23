@@ -9,7 +9,6 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   GalatAkun,
-  GALAT_HP_TERDAFTAR,
   GALAT_KODE,
   GALAT_MASUK,
   keE164,
@@ -118,7 +117,7 @@ export function buatAkunTiruan(
 ): PenyediaAkun & { dicabut: string[] } {
   const sandiPer = new Map<
     string,
-    { id: string; sandi: string; aktif: boolean }
+    { id: string; sandi: string | null; aktif: boolean }
   >();
   const dicabut: string[] = [];
   const sesi = (id: string) => ({
@@ -131,32 +130,23 @@ export function buatAkunTiruan(
   });
   return {
     dicabut,
-    async daftar({ hp, sandi, nama, peran }) {
-      const meta = JSON.stringify({ full_name: nama, role: peran });
-      const ada = sandiPer.get(hp);
-      if (ada?.aktif) throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
-      /* Seperti GoTrue: daftar ulang nomor yang belum diverifikasi menimpa
-         isian & sandinya dan mengirim kode lagi. */
-      const r = ada
-        ? await klien.query<{ id: string }>(
-            `update auth.users set raw_user_meta_data = $2 where id = $1 returning id`,
-            [ada.id, meta],
-          )
-        : await klien.query<{ id: string }>(
-            `insert into auth.users (id, phone, raw_user_meta_data)
-             values (gen_random_uuid(), $1, $2) returning id`,
-            [keE164(hp), meta],
-          );
-      sandiPer.set(hp, { id: r.rows[0].id, sandi, aktif: false });
+    async kirimKode(hp) {
+      /* Seperti `/otp` + create_user: akun tanpa sandi, belum terkonfirmasi. */
+      if (sandiPer.has(hp)) return;
+      const r = await klien.query<{ id: string }>(
+        `insert into auth.users (id, phone) values (gen_random_uuid(), $1) returning id`,
+        [keE164(hp)],
+      );
+      sandiPer.set(hp, { id: r.rows[0].id, sandi: null, aktif: false });
     },
-    async verifikasi(hp, kode) {
+    async verifikasi(hp, kode, { sandi }) {
       const akun = sandiPer.get(hp);
       if (!akun || kode !== KODE_UJI) throw new GalatAkun(GALAT_KODE, 422);
       await klien.query(
         `update auth.users set phone_confirmed_at = now() where id = $1`,
         [akun.id],
       );
-      akun.aktif = true;
+      Object.assign(akun, { sandi, aktif: true });
       return sesi(akun.id);
     },
     async masuk(hp, sandi) {

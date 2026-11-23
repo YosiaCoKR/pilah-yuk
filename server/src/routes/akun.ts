@@ -1,6 +1,13 @@
 import { eq } from "drizzle-orm";
 import { Elysia, status, t } from "elysia";
-import { GalatAkun, POLA_HP, normalkanHp, type PenyediaAkun } from "../akun";
+import {
+  GALAT_HP_TERDAFTAR,
+  GalatAkun,
+  POLA_HP,
+  normalkanHp,
+  type PenyediaAkun,
+} from "../akun";
+import { buatPembatas } from "../batas";
 import type { Db } from "../db";
 import { users } from "../db/schema";
 
@@ -13,10 +20,12 @@ const BadanDaftar = t.Object({
   }),
 });
 
-const BadanVerifikasi = t.Object({
-  hp: t.String({ maxLength: 20 }),
-  kode: t.String({ maxLength: 10 }),
-});
+/* Isian daftar dikirim ULANG bersama kode: sandi baru dipasang setelah
+   nomornya terbukti — lihat `PenyediaAkun.kirimKode`. */
+const BadanVerifikasi = t.Composite([
+  BadanDaftar,
+  t.Object({ kode: t.String({ maxLength: 10 }) }),
+]);
 
 const BadanMasuk = t.Object({
   hp: t.String({ maxLength: 20 }),
@@ -80,7 +89,21 @@ async function lewat<T>(kerja: () => Promise<T>) {
   }
 }
 
-export const ruteAkun = (db: Db, penyedia?: PenyediaAkun) =>
+const LIMA_BELAS_MENIT = 15 * 60_000;
+const KEBANYAKAN = {
+  pesan: "Terlalu banyak percobaan untuk nomor ini. Coba lagi 15 menit lagi.",
+};
+
+export const ruteAkun = (
+  db: Db,
+  penyedia?: PenyediaAkun,
+  /* Per nomor HP: 5 tebakan sandi / kode SMS per 15 menit. Kode 6 angka
+     punya sejuta kemungkinan; tanpa batas, ia tertebak dalam hitungan jam. */
+  batas = buatPembatas(5, LIMA_BELAS_MENIT),
+  /* Per nomor HP: 3 SMS per jam — tiap SMS ada biayanya, dan tanpa ini
+     satu nomor bisa dibanjiri kode yang tidak pernah ia minta. */
+  batasSms = buatPembatas(3, 4 * LIMA_BELAS_MENIT),
+) =>
   new Elysia({ prefix: "/akun" })
     .post(
       "/daftar",
@@ -95,9 +118,16 @@ export const ruteAkun = (db: Db, penyedia?: PenyediaAkun) =>
          jatuh ke akun tiruan di produksi. */
         if (!penyedia) return status(503, TUTUP);
 
-        const h = await lewat(() =>
-          penyedia.daftar({ hp, sandi: body.sandi, nama, peran: body.peran }),
-        );
+        /* Profil hanya ada untuk nomor yang sudah terverifikasi, jadi ini
+           cara memeriksa "sudah terdaftar" tanpa bertanya ke Supabase. */
+        const [ada] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.phone, hp));
+        if (ada) return status(409, { pesan: GALAT_HP_TERDAFTAR });
+
+        if (!batasSms.boleh(`sms:${hp}`)) return status(429, KEBANYAKAN);
+        const h = await lewat(() => penyedia.kirimKode(hp));
         if (!h.ok) return h.jawab;
         /* Belum ada sesi: akunnya aktif setelah kode SMS diverifikasi. */
         return status(202, {
@@ -111,26 +141,42 @@ export const ruteAkun = (db: Db, penyedia?: PenyediaAkun) =>
     .post(
       "/daftar/verifikasi",
       async ({ body }) => {
+        const nama = body.nama.trim();
+        const hp = normalkanHp(body.hp);
         const kode = body.kode.replace(/\s/g, "");
+        const rincian = periksa(nama, hp, body.sandi);
         if (!/^\d{6}$/.test(kode))
-          return status(422, {
-            pesan: "Ada isian yang belum benar.",
-            rincian: [
-              { kolom: "kode", pesan: "Kodenya 6 angka, tanpa huruf." },
-            ],
+          rincian.push({
+            kolom: "kode",
+            pesan: "Kodenya 6 angka, tanpa huruf.",
           });
+        if (rincian.length)
+          return status(422, { pesan: "Ada isian yang belum benar.", rincian });
         if (!penyedia) return status(503, TUTUP);
 
+        if (!batas.boleh(`kode:${hp}`)) return status(429, KEBANYAKAN);
         const h = await lewat(() =>
-          penyedia.verifikasi(normalkanHp(body.hp), kode),
+          penyedia.verifikasi(hp, kode, {
+            sandi: body.sandi,
+            nama,
+            peran: body.peran,
+          }),
         );
         if (!h.ok) return h.jawab;
-        return status(201, {
-          data: {
-            pengguna: await profil(db, h.nilai.penggunaId),
-            sesi: h.nilai.sesi,
-          },
-        });
+        batas.lupakan(`kode:${hp}`);
+
+        /* Trigger membuat profil saat nomor terkonfirmasi — sebelum nama dan
+           peran terpasang — jadi keduanya diisi di sini. */
+        const [pengguna] = await db
+          .update(users)
+          .set({ fullName: nama, role: body.peran })
+          .where(eq(users.id, h.nilai.penggunaId))
+          .returning({ id: users.id, nama: users.fullName, peran: users.role });
+        if (!pengguna)
+          throw new Error(
+            "Profil tidak terbentuk — trigger auth.users terpasang?",
+          );
+        return status(201, { data: { pengguna, sesi: h.nilai.sesi } });
       },
       { body: BadanVerifikasi },
     )
@@ -141,10 +187,11 @@ export const ruteAkun = (db: Db, penyedia?: PenyediaAkun) =>
         /* Format nomor salah tetap dijawab dengan pesan gabungan yang sama —
          tidak perlu memberi petunjuk apa pun sebelum Supabase menjawab. */
         if (!penyedia) return status(503, TUTUP);
-        const h = await lewat(() =>
-          penyedia.masuk(normalkanHp(body.hp), body.sandi),
-        );
+        const hp = normalkanHp(body.hp);
+        if (!batas.boleh(`masuk:${hp}`)) return status(429, KEBANYAKAN);
+        const h = await lewat(() => penyedia.masuk(hp, body.sandi));
         if (!h.ok) return h.jawab;
+        batas.lupakan(`masuk:${hp}`);
         return {
           data: {
             pengguna: await profil(db, h.nilai.penggunaId),

@@ -15,22 +15,22 @@ export type Sesi = {
   expiresIn: number;
 };
 
-export type PermintaanDaftar = {
-  /** Sudah dinormalkan ke bentuk 08xx. */
-  hp: string;
-  sandi: string;
-  nama: string;
-  peran: Peran;
-};
+/** Isian yang baru dipasang SETELAH nomornya terbukti milik pendaftar. */
+export type IsianAkun = { sandi: string; nama: string; peran: Peran };
 
 type Masuk = { penggunaId: string; sesi: Sesi };
 
 /** Semua metode melempar `GalatAkun` untuk penolakan yang boleh dibaca warga. */
 export type PenyediaAkun = {
-  /** Buat akun yang belum aktif dan kirim kode SMS. Mengulang = kirim ulang. */
-  daftar: (p: PermintaanDaftar) => Promise<void>;
-  /** Tukar kode SMS pendaftaran dengan sesi; profil lahir di titik ini. */
-  verifikasi: (hp: string, kode: string) => Promise<Masuk>;
+  /**
+   * Kirim kode SMS ke nomor (08xx). Sengaja TANPA sandi maupun nama: apa pun
+   * yang dititipkan sebelum nomor terbukti bisa ditimpa orang lain yang
+   * mendaftar nomor yang sama, dan sandinya ikut aktif saat korban
+   * memasukkan kode.
+   */
+  kirimKode: (hp: string) => Promise<void>;
+  /** Kode cocok → akun aktif, lalu sandi + nama + peran dipasang. */
+  verifikasi: (hp: string, kode: string, isian: IsianAkun) => Promise<Masuk>;
   /** `hp` sudah dinormalkan ke 08xx. */
   masuk: (hp: string, sandi: string) => Promise<Masuk>;
   /** Cabut sesi pemilik token (refresh token tidak bisa dipakai lagi). */
@@ -94,10 +94,15 @@ export function buatSupabaseAuth(
   };
 
   /** `token` = token warga (logout); tanpa itu, memakai service key. */
-  async function kirim(jalur: string, badan: unknown, token?: string) {
+  async function kirim(
+    jalur: string,
+    badan: unknown,
+    token?: string,
+    method = "POST",
+  ) {
     try {
       const res = await fetch(`${url}/auth/v1${jalur}`, {
-        method: "POST",
+        method,
         headers: token
           ? { ...kepala, authorization: `Bearer ${token}` }
           : kepala,
@@ -136,67 +141,69 @@ export function buatSupabaseAuth(
   }
 
   return {
-    /*
-      `/signup` biasa (bukan Admin API): dengan "Confirm phone" aktif di
-      Supabase, akun dibuat belum aktif dan kode SMS dikirim. Profil baru
-      dibuat saat kodenya diverifikasi (trigger migrasi 0013), jadi orang yang
-      memakai nomor orang lain tidak pernah sampai punya profil.
-
-      Mendaftar ulang nomor yang belum diverifikasi = kirim ulang kode.
-      Pastikan di proyek Supabase: Auth → Providers → Phone aktif, provider
-      SMS terpasang, dan "Confirm phone" menyala — tanpa itu Supabase
-      langsung mengaktifkan akun tanpa kode.
-    */
-    async daftar({ hp, sandi, nama, peran }) {
-      const { ok, j } = await kirim("/signup", {
+    async kirimKode(hp) {
+      /* `/otp` + create_user: akun tanpa sandi dibuat bila belum ada, kode
+         dikirim. Pastikan di Supabase: Auth → Providers → Phone aktif dan
+         provider SMS terpasang. */
+      const { ok, j } = await kirim("/otp", {
         phone: keE164(hp),
-        password: sandi,
-        data: { full_name: nama, role: peran },
+        create_user: true,
         channel: "sms",
       });
       if (ok) return;
-      if (
-        j.error_code === "phone_exists" ||
-        j.error_code === "user_already_exists"
-      )
-        throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
-      if (j.error_code === "weak_password")
-        throw new GalatAkun(
-          "Kata sandinya terlalu mudah ditebak. Coba gabungkan huruf dan angka.",
-          422,
-        );
       if (j.error_code === "over_sms_send_rate_limit")
         throw new GalatAkun(
           "Kode baru saja dikirim. Tunggu satu menit sebelum minta lagi.",
           429,
         );
-      console.error("Supabase Auth menolak pendaftaran:", j);
+      console.error("Supabase Auth menolak mengirim kode:", j);
       throw new GalatAkun(
-        "Akun belum bisa dibuat. Coba lagi sebentar lagi.",
+        "Kode belum bisa dikirim. Coba lagi sebentar lagi.",
         502,
       );
     },
 
-    async verifikasi(hp, kode) {
-      const { ok, j } = await kirim("/verify", {
+    async verifikasi(hp, kode, { sandi, nama, peran }) {
+      const v = await kirim("/verify", {
         type: "sms",
         phone: keE164(hp),
         token: kode,
       });
-      if (ok && j.access_token && j.refresh_token && j.user?.id)
-        return {
-          penggunaId: j.user.id,
-          sesi: {
-            accessToken: j.access_token,
-            refreshToken: j.refresh_token,
-            expiresIn: j.expires_in ?? 3600,
-          },
-        };
-      /* GoTrue menjawab kode salah dan kode kedaluwarsa dengan galat yang
-         sama (otp_expired); warga cukup tahu harus minta kode baru. */
-      if (j.error_code !== "otp_expired")
-        console.error("Supabase Auth menolak verifikasi:", j);
-      throw new GalatAkun(GALAT_KODE, 422);
+      const j = v.j;
+      if (!v.ok || !j.access_token || !j.refresh_token || !j.user?.id) {
+        /* GoTrue menjawab kode salah dan kode kedaluwarsa dengan galat yang
+           sama (otp_expired); warga cukup tahu harus minta kode baru. */
+        if (j.error_code !== "otp_expired")
+          console.error("Supabase Auth menolak verifikasi:", j);
+        throw new GalatAkun(GALAT_KODE, 422);
+      }
+
+      /* Baru sekarang sandi dipasang — dengan token milik warga ini sendiri,
+         jadi tidak ada jalan menitipkan sandi ke nomor orang lain. */
+      const pasang = await kirim(
+        "/user",
+        { password: sandi, data: { full_name: nama, role: peran } },
+        j.access_token,
+        "PUT",
+      );
+      if (!pasang.ok) {
+        console.error("Supabase Auth menolak memasang sandi:", pasang.j);
+        throw new GalatAkun(
+          pasang.j.error_code === "weak_password"
+            ? "Nomormu sudah terverifikasi, tapi sandinya terlalu mudah ditebak. Atur sandi baru lewat Lupa sandi."
+            : "Nomormu sudah terverifikasi, tapi sandinya belum tersimpan. Atur sandi lewat Lupa sandi.",
+          502,
+        );
+      }
+
+      return {
+        penggunaId: j.user.id,
+        sesi: {
+          accessToken: j.access_token,
+          refreshToken: j.refresh_token,
+          expiresIn: j.expires_in ?? 3600,
+        },
+      };
     },
 
     /*
