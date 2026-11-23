@@ -10,6 +10,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import {
   GalatAkun,
   GALAT_HP_TERDAFTAR,
+  GALAT_MASUK,
   keE164,
   type PenyediaAkun,
 } from "../akun";
@@ -106,27 +107,38 @@ export function buatGatewayTiruan(): Gateway & { dimatikan: string[] } {
  * Supabase Auth tiruan: menulis ke `auth.users` PGlite, jadi trigger profil
  * (migrasi 0012) yang membuat baris `users` — bukan tiruan ini.
  */
-export function buatAkunTiruan(klien: PGlite): PenyediaAkun {
+export function buatAkunTiruan(
+  klien: PGlite,
+): PenyediaAkun & { dicabut: string[] } {
+  const sandiPer = new Map<string, { id: string; sandi: string }>();
+  const dicabut: string[] = [];
+  const sesi = (id: string) => ({
+    penggunaId: id,
+    sesi: {
+      accessToken: `akses-${id}`,
+      refreshToken: "segar",
+      expiresIn: 3600,
+    },
+  });
   return {
-    async daftar({ hp, nama, peran }) {
-      const ada = await klien.query(
-        `select 1 from auth.users where phone = $1`,
-        [keE164(hp)],
-      );
-      if (ada.rows.length) throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
+    dicabut,
+    async daftar({ hp, sandi, nama, peran }) {
+      if (sandiPer.has(hp)) throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
       const r = await klien.query<{ id: string }>(
         `insert into auth.users (id, phone, raw_user_meta_data)
          values (gen_random_uuid(), $1, $2) returning id`,
         [keE164(hp), JSON.stringify({ full_name: nama, role: peran })],
       );
-      return {
-        penggunaId: r.rows[0].id,
-        sesi: {
-          accessToken: `akses-${r.rows[0].id}`,
-          refreshToken: "segar",
-          expiresIn: 3600,
-        },
-      };
+      sandiPer.set(hp, { id: r.rows[0].id, sandi });
+      return sesi(r.rows[0].id);
+    },
+    async masuk(hp, sandi) {
+      const akun = sandiPer.get(hp);
+      if (!akun || akun.sandi !== sandi) throw new GalatAkun(GALAT_MASUK, 401);
+      return sesi(akun.id);
+    },
+    async keluar(token) {
+      dicabut.push(token);
     },
   };
 }
@@ -157,7 +169,11 @@ export async function siapkan(gateway: Gateway | null = buatGatewayTiruan()) {
   async function panggil(
     method: string,
     path: string,
-    opts: { sebagai?: string; body?: unknown } = {},
+    opts: {
+      sebagai?: string;
+      body?: unknown;
+      kepala?: Record<string, string>;
+    } = {},
   ): Promise<{ status: number; body: any }> {
     const res = await app.handle(
       new Request(`http://local${path}`, {
@@ -165,6 +181,7 @@ export async function siapkan(gateway: Gateway | null = buatGatewayTiruan()) {
         headers: {
           "content-type": "application/json",
           ...(opts.sebagai ? { "x-user-id": opts.sebagai } : {}),
+          ...opts.kepala,
         },
         ...(opts.body ? { body: JSON.stringify(opts.body) } : {}),
       }),

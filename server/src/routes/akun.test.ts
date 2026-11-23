@@ -12,7 +12,7 @@ import { GalatAkun, buatSupabaseAuth } from "../akun";
 import { buatApp } from "../app";
 import { lulus, siapkan } from "../test/bantu";
 
-const { db, panggil, schema } = await siapkan();
+const { db, panggil, schema, akun } = await siapkan();
 const sah = {
   nama: " Siti ",
   hp: "+62 813-1111-2222",
@@ -83,6 +83,7 @@ lulus("tanpa penyedia akun → 503");
 
 r = await daftarLewat(
   buatApp(db, undefined, undefined, {
+    ...akun,
     daftar: async () => {
       throw new GalatAkun("Layanan akun sedang tidak bisa dihubungi.", 502);
     },
@@ -91,6 +92,41 @@ r = await daftarLewat(
 assert.equal(r.status, 502);
 assert.match(r.body.pesan, /tidak bisa dihubungi/);
 lulus("penyedia gagal → 502 dengan pesan awam");
+
+/* --- masuk: nomor apa pun formatnya, satu pesan untuk semua kegagalan --- */
+r = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: "0813-1111-2222", sandi: "rahasia123" },
+});
+assert.equal(r.status, 200, JSON.stringify(r.body));
+assert.equal(r.body.data.pengguna.nama, "Siti");
+assert.equal(r.body.data.pengguna.peran, "pengurus");
+assert.ok(r.body.data.sesi.accessToken);
+lulus("POST /akun/masuk → profil + sesi");
+
+const salahSandi = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: "081311112222", sandi: "salahsalah" },
+});
+const tanpaAkun = await panggil("POST", "/api/akun/masuk", {
+  body: { hp: "089900000000", sandi: "rahasia123" },
+});
+assert.equal(salahSandi.status, 401);
+assert.equal(tanpaAkun.status, 401);
+/* Jawaban yang sama persis: layar masuk tidak boleh jadi alat menebak nomor. */
+assert.deepEqual(salahSandi.body, tanpaAkun.body);
+lulus("sandi salah = nomor tak terdaftar → 401 dengan pesan yang sama");
+
+/* --- keluar --- */
+const keluar = (authorization?: string) =>
+  panggil("POST", "/api/akun/keluar", {
+    kepala: authorization ? { authorization } : {},
+  });
+r = await keluar("Bearer token-siti");
+assert.equal(r.status, 204);
+assert.deepEqual(akun.dicabut, ["token-siti"], "sesi dicabut di Supabase");
+r = await keluar();
+assert.equal(r.status, 204, "tanpa sesi pun keluar tetap berhasil");
+assert.equal(akun.dicabut.length, 1, "tanpa token tidak ada yang dicabut");
+lulus("POST /akun/keluar → 204, refresh token dicabut");
 
 /* --- klien GoTrue: bentuk permintaan & arti jawabannya (fetch distub) --- */
 const asli = globalThis.fetch;
@@ -150,6 +186,24 @@ try {
     (e: GalatAkun) => e.status === 502 && /sudah jadi/.test(e.pesan),
   );
   lulus("klien GoTrue: 62xx, metadata peran, phone_exists → 409");
+
+  jawab = () => [400, { error_code: "invalid_credentials" }];
+  await assert.rejects(
+    supa.masuk("081311112222", "salah"),
+    (e: GalatAkun) => e.status === 401,
+  );
+
+  terkirim.length = 0;
+  jawab = () => [401, {}];
+  await supa.keluar("token-basi"); // token kedaluwarsa = sudah keluar
+  assert.match(
+    terkirim[0].url,
+    /\/logout\?scope=local$/,
+    "cabut sesi ini saja, bukan semua perangkat",
+  );
+  jawab = () => [500, {}];
+  await assert.rejects(supa.keluar("t"), (e: GalatAkun) => e.status === 502);
+  lulus("klien GoTrue: sandi salah → 401, token basi tetap dianggap keluar");
 } finally {
   globalThis.fetch = asli;
 }
