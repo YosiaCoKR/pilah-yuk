@@ -7,6 +7,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
+import {
+  GalatAkun,
+  GALAT_HP_TERDAFTAR,
+  keE164,
+  type PenyediaAkun,
+} from "../akun";
 import { buatApp } from "../app";
 import { badanCharge, type Gateway } from "../pembayaran";
 import type { Db } from "../db";
@@ -96,6 +102,35 @@ export function buatGatewayTiruan(): Gateway & { dimatikan: string[] } {
   };
 }
 
+/**
+ * Supabase Auth tiruan: menulis ke `auth.users` PGlite, jadi trigger profil
+ * (migrasi 0012) yang membuat baris `users` — bukan tiruan ini.
+ */
+export function buatAkunTiruan(klien: PGlite): PenyediaAkun {
+  return {
+    async daftar({ hp, nama, peran }) {
+      const ada = await klien.query(
+        `select 1 from auth.users where phone = $1`,
+        [keE164(hp)],
+      );
+      if (ada.rows.length) throw new GalatAkun(GALAT_HP_TERDAFTAR, 409);
+      const r = await klien.query<{ id: string }>(
+        `insert into auth.users (id, phone, raw_user_meta_data)
+         values (gen_random_uuid(), $1, $2) returning id`,
+        [keE164(hp), JSON.stringify({ full_name: nama, role: peran })],
+      );
+      return {
+        penggunaId: r.rows[0].id,
+        sesi: {
+          accessToken: `akses-${r.rows[0].id}`,
+          refreshToken: "segar",
+          expiresIn: 3600,
+        },
+      };
+    },
+  };
+}
+
 /* `null` = tanpa penyedia (menguji gagal-tertutup). Bukan `undefined`:
    parameter berdefault tetap jatuh ke defaultnya saat diberi undefined. */
 /** Server key tiruan: dipakai menghitung tanda tangan webhook di pemeriksaan. */
@@ -116,7 +151,8 @@ export async function siapkan(gateway: Gateway | null = buatGatewayTiruan()) {
   await beriHakSupabase(klien);
 
   const db = drizzle(klien, { schema, casing: "snake_case" }) as unknown as Db;
-  const app = buatApp(db, gateway ?? undefined, KUNCI_UJI);
+  const akun = buatAkunTiruan(klien);
+  const app = buatApp(db, gateway ?? undefined, KUNCI_UJI, akun);
 
   async function panggil(
     method: string,
@@ -136,7 +172,7 @@ export async function siapkan(gateway: Gateway | null = buatGatewayTiruan()) {
     return { status: res.status, body: await res.json().catch(() => null) };
   }
 
-  return { klien, db, app, panggil, schema, gateway };
+  return { klien, db, app, panggil, schema, gateway, akun };
 }
 
 export const lulus = (label: string) => console.log(`  ✓ ${label}`);

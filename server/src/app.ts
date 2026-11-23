@@ -1,6 +1,8 @@
 import { Elysia, ElysiaCustomStatusResponse } from "elysia";
+import type { PenyediaAkun } from "./akun";
 import type { Db } from "./db";
 import type { Gateway } from "./pembayaran";
+import { ruteAkun } from "./routes/akun";
 import { ruteAlamat } from "./routes/alamat";
 import { ruteChannel } from "./routes/channel";
 import { ruteJadwal } from "./routes/jadwal";
@@ -19,6 +21,7 @@ export function buatApp(
   db: Db,
   gateway?: Gateway,
   midtransServerKey?: string,
+  akun?: PenyediaAkun,
 ) {
   return new Elysia()
     .onError(({ code, error, set }) => {
@@ -47,5 +50,17 @@ export function buatApp(
       return { pesan: "Ada gangguan di server. Coba lagi sebentar lagi." };
     })
     .get("/sehat", () => ({ status: "ok" }))
-    .group("/api", (app) => app.use(ruteAlamat(db)).use(ruteSlotWaktu(db)).use(rutePesanan(db)).use(ruteLangganan(db, gateway)).use(ruteJadwal(db)).use(ruteRiwayat(db)).use(ruteChannel(db)).use(rutePanduan(db)).use(ruteWebhookBayar(db, midtransServerKey)));
+    .group("/api", (app) =>
+      app
+        .use(ruteAkun(db, akun))
+        .use(ruteAlamat(db))
+        .use(ruteSlotWaktu(db))
+        .use(rutePesanan(db))
+        .use(ruteLangganan(db, gateway))
+        .use(ruteJadwal(db))
+        .use(ruteRiwayat(db))
+        .use(ruteChannel(db))
+        .use(rutePanduan(db))
+        .use(ruteWebhookBayar(db, midtransServerKey)),
+    );
 }

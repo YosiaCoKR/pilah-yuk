@@ -1,3 +1,4 @@
+import { buatSupabaseAuth } from "./akun";
 import { buatApp } from "./app";
 import { buatDb } from "./db";
 import { env } from "./env";
@@ -15,6 +16,26 @@ if (!gateway) {
   );
 }
 
-buatApp(buatDb(env.databaseUrl), gateway, process.env.MIDTRANS_SERVER_KEY).listen(env.port, ({ hostname, port }) => {
+/* Sama seperti gateway: tanpa kredensial, pendaftaran dijawab 503 — bukan
+   jatuh ke penyedia tiruan. */
+const akun =
+  process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? buatSupabaseAuth(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+      )
+    : undefined;
+if (!akun) {
+  console.warn(
+    "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY belum diisi — pendaftaran akan dijawab 503.",
+  );
+}
+
+buatApp(
+  buatDb(env.databaseUrl),
+  gateway,
+  process.env.MIDTRANS_SERVER_KEY,
+  akun,
+).listen(env.port, ({ hostname, port }) => {
   console.log(`Pilah Yuk API jalan di http://${hostname}:${port}`);
 });
