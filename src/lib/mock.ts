@@ -857,7 +857,13 @@ export function jarakTerbaca(meter: number) {
 }
 
 /* Warga yang sedang masuk. ponytail: tetap, sampai sesi sungguhan ada. */
-export const PENGGUNA = { nama: "Bu Rina" };
+export const PENGGUNA = {
+  nama: "Bu Rina",
+  hp: "081234567890",
+  email: "rina.sukamaju@contoh.id" as string | null,
+  peran: "warga" as "warga" | "pengurus",
+  bergabung: "2026-03-14",
+};
 
 /* Nomor yang dianggap sudah punya akun, buat menguji layar pendaftaran. */
 export const HP_TERDAFTAR = ["081234567890", "085600112233"];
