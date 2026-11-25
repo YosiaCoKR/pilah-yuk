@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { hariIniISO } from "@/lib/tanggal";
-import { simpanUlasan } from "@/lib/toko-ulasan";
+import { simpanUlasan, useUlasan } from "@/lib/toko-ulasan";
 import type { Ulasan } from "@/lib/types";
 import { IkonBintang, IkonCentang } from "../ikon";
 import { Isian, Kartu, Label } from "../primitif";
@@ -45,7 +45,15 @@ export function FormUmpanBalik({
     setNilai(n);
   }
 
+  /* Sudah dinilai sebelumnya (di tab lain, atau lewat tombol kembali). */
+  const sudahAda = useUlasan().find((x) => x.pickupId === pickupId);
+  /* Ref, bukan state: ketukan kedua bisa datang sebelum React sempat
+     merender ulang, dan saat itu state `kirim` masih false. */
+  const terkunci = useRef(false);
+
   function simpan() {
+    if (terkunci.current || sudahAda) return;
+    terkunci.current = true;
     const u: Ulasan = {
       pickupId,
       nilai: nilai as Ulasan["nilai"],
@@ -54,27 +62,31 @@ export function FormUmpanBalik({
       dikirim: hariIniISO(),
     };
     mulaiKirim(() => {
-      simpanUlasan(u);
-      setTerkirim(u);
+      /* Ditolak toko → `sudahAda` terisi dan layar "sudah dinilai" muncul. */
+      if (simpanUlasan(u)) setTerkirim(u);
     });
   }
 
-  if (terkirim) {
+  const hasil = terkirim ?? sudahAda;
+  if (hasil) {
     return (
       <div className="space-y-5 px-4 pb-10 pt-8 text-center">
         <span className="mx-auto grid size-14 place-items-center rounded-full bg-hijau text-white">
           <IkonCentang className="size-7" />
         </span>
         <div>
-          <p className="text-[19px] font-bold">Terima kasih!</p>
+          <p className="text-[19px] font-bold">
+            {terkirim ? "Terima kasih!" : "Sudah kamu nilai"}
+          </p>
           <p className="mt-1 text-[14px] leading-snug text-ink-2">
-            Penilaianmu diteruskan ke pengurus channel supaya pelayanan{" "}
-            {petugas} makin baik.
+            {terkirim
+              ? `Penilaianmu diteruskan ke pengurus channel supaya pelayanan ${petugas} makin baik.`
+              : "Satu penjemputan cukup dinilai sekali. Ini penilaian yang sudah sampai ke pengurus."}
           </p>
         </div>
         {/* Rekap persis yang terkirim — warga tahu apa yang dibaca pengurus. */}
         <Kartu className="p-4 text-left">
-          <RingkasUlasan u={terkirim} />
+          <RingkasUlasan u={hasil} />
         </Kartu>
         <div className="space-y-2">
           <TombolLink href={`/riwayat/${pickupId}`} varian="garis" lebar>
