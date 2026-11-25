@@ -22,6 +22,7 @@ const MENU = [
     label: "Notifikasi",
     ket: "Pengingat dan kabar channel",
   },
+  { href: "/bantuan", label: "Pusat bantuan", ket: "Jawaban pertanyaan umum" },
 ];
 
 export default function ProfilPage() {

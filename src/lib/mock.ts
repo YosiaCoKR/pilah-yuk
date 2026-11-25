@@ -869,3 +869,57 @@ export const PENGGUNA = {
 export const HP_TERDAFTAR = ["081234567890", "085600112233"];
 /* Sandi semua akun tiruan di atas, buat mencoba jalur "sandi salah". */
 export const SANDI_TIRUAN = "rahasia123";
+
+/* Pertanyaan yang paling sering masuk ke pengurus. Jawabannya sengaja
+   menyebut angka & langkah konkret, bukan "silakan hubungi admin". */
+export type Faq = { topik: string; tanya: string; jawab: string };
+export const FAQ: Faq[] = [
+  {
+    topik: "Penjemputan",
+    tanya: "Jam berapa petugas datang?",
+    jawab:
+      "Sesuai slot yang kamu pilih saat memesan (mis. 06.00–08.00). Status berubah jadi “Dijemput” begitu petugas berangkat ke alamatmu.",
+  },
+  {
+    topik: "Penjemputan",
+    tanya: "Bagaimana kalau saya tidak di rumah?",
+    jawab:
+      "Taruh sampah di depan pagar dan isi patokan alamat dengan jelas. Petugas tetap menimbang dan memotret bukti pengangkutan.",
+  },
+  {
+    topik: "Penjemputan",
+    tanya: "Bisa membatalkan atau menggeser jemput?",
+    jawab:
+      "Bisa, selama statusnya masih “Menunggu”. Untuk jadwal rutin, pakai Jeda jadwal saat keluar kota — kuota tidak terpakai.",
+  },
+  {
+    topik: "Langganan & pembayaran",
+    tanya: "Pembayaran apa saja yang diterima?",
+    jawab:
+      "QRIS, e-wallet (GoPay, OVO, DANA, ShopeePay), dan transfer virtual account bank. Langganan aktif otomatis begitu pembayaran terkonfirmasi.",
+  },
+  {
+    topik: "Langganan & pembayaran",
+    tanya: "Sudah bayar tapi langganan belum aktif?",
+    jawab:
+      "Biasanya terkonfirmasi dalam 1–5 menit. Kalau lebih dari 30 menit, buka Tagihan lalu kirim bukti bayarnya ke pengurus channel.",
+  },
+  {
+    topik: "Langganan & pembayaran",
+    tanya: "Kuota jemput habis sebelum akhir bulan?",
+    jawab:
+      "Kamu tetap bisa memesan jemput tambahan, atau naik ke paket dengan kuota lebih besar mulai periode berikutnya.",
+  },
+  {
+    topik: "Akun & channel",
+    tanya: "Kenapa harus gabung channel RT/RW?",
+    jawab:
+      "Petugas dibagi per wilayah. Tanpa channel, pesananmu belum bisa diteruskan ke petugas yang melayani rumahmu.",
+  },
+  {
+    topik: "Akun & channel",
+    tanya: "Lupa kata sandi?",
+    jawab:
+      "Di layar Masuk, pilih “Lupa kata sandi”, masukkan nomor HP, lalu ketik kode yang dikirim lewat SMS.",
+  },
+];
