@@ -893,6 +893,19 @@ export const ULASAN: Ulasan[] = [
 /* Pertanyaan yang paling sering masuk ke pengurus. Jawabannya sengaja
    menyebut angka & langkah konkret, bukan "silakan hubungi admin". */
 export type Faq = { topik: string; tanya: string; jawab: string };
+
+/**
+ * Semua kata kunci harus muncul (di topik, pertanyaan, atau jawaban):
+ * "bayar qris" menyempit ke jawaban soal QRIS, bukan melebar ke semua yang
+ * menyebut "bayar". Kosong = semua FAQ.
+ */
+export function cariFaq(kata: string, daftar: Faq[] = FAQ): Faq[] {
+  const kunci = kata.toLowerCase().split(/\s+/).filter(Boolean);
+  return daftar.filter((f) => {
+    const teks = `${f.topik} ${f.tanya} ${f.jawab}`.toLowerCase();
+    return kunci.every((k) => teks.includes(k));
+  });
+}
 export const FAQ: Faq[] = [
   {
     topik: "Penjemputan",
