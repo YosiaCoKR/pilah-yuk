@@ -490,5 +490,39 @@ lulus(
   "alamat & jadwal hanya terbaca pemiliknya; anon dan tulis-langsung ditolak",
 );
 
+/* --- feedbacks: aturan "satu penilaian, hanya jemput selesai milikmu" ada
+   di API. Jalan memutar lewat PostgREST harus buntu: tidak bisa menulis
+   langsung, dan tidak bisa membaca penilaian tetangga. --- */
+await db.insert(schema.feedbacks).values([
+  { userId: RINA, pickupId: milikRina.id, rating: 5 },
+  { userId: AGUS, pickupId: milikAgus.id, rating: 2 },
+]);
+const ulasanRina = await sebagai<{ pickup_id: string }>(
+  RINA,
+  `select pickup_id from feedbacks`,
+);
+assert.deepEqual(
+  ulasanRina.map((u) => u.pickup_id),
+  [milikRina.id],
+  "warga hanya membaca penilaiannya sendiri",
+);
+await assert.rejects(
+  sebagai(
+    AGUS,
+    `insert into feedbacks (user_id, pickup_id, rating)
+     values ('${AGUS}', '${milikRina.id}', 1)`,
+  ),
+  "insert langsung lewat PostgREST harus ditolak",
+);
+await klien.exec("begin");
+try {
+  await klien.exec("set local role anon");
+  const r = await klien.query(`select 1 from feedbacks`);
+  assert.equal(r.rows.length, 0, "anon tidak membaca penilaian");
+} finally {
+  await klien.exec("rollback");
+}
+lulus("feedbacks: baca hanya milik sendiri; insert langsung & anon ditolak");
+
 await klien.close();
 console.log("\nSemua pemeriksaan RLS penjemputan, langganan & tagihan lulus.");
