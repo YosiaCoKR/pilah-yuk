@@ -62,6 +62,30 @@ export function periksaPendaftaran(
   return g;
 }
 
+export type IsiProfil = { nama: string; hp: string; email: string };
+export type GalatProfil = Partial<Record<keyof IsiProfil, string>>;
+
+/** Ubah profil: aturan nama & HP sama dengan daftar; email boleh kosong. */
+export function periksaProfil(isi: IsiProfil): GalatProfil {
+  const g: GalatProfil = {};
+
+  const nama = isi.nama.trim();
+  if (!nama) g.nama = "Tulis namamu supaya petugas tahu memanggil siapa.";
+  else if (nama.length < 3)
+    g.nama = "Namanya terlalu singkat — minimal 3 huruf.";
+
+  const hp = normalkanHp(isi.hp);
+  if (!hp) g.hp = "Nomor HP dipakai untuk pengingat jemput, jadi wajib diisi.";
+  else if (!POLA_HP.test(hp))
+    g.hp = "Pakai nomor HP Indonesia, mis. 0812 3456 7890.";
+
+  const email = isi.email.trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    g.email = "Bentuk emailnya belum benar, mis. nama@contoh.id.";
+
+  return g;
+}
+
 export type IsiMasuk = { hp: string; sandi: string };
 export type GalatMasuk = Partial<Record<keyof IsiMasuk, string>>;
 

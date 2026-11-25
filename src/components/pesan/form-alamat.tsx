@@ -35,17 +35,20 @@ function periksa(isi: Isi): Galat {
 export function FormAlamat({
   onSimpan,
   onBatal,
+  awal,
 }: {
   onSimpan: (a: Omit<Address, "id">) => void;
   onBatal: () => void;
+  /** Diisi saat mengubah alamat yang sudah tersimpan. */
+  awal?: Address;
 }) {
   const id = useId();
   const [isi, setIsi] = useState<Isi>({
-    label: "",
-    fullAddress: "",
-    landmark: "",
+    label: awal?.label ?? "",
+    fullAddress: awal?.fullAddress ?? "",
+    landmark: awal?.landmark ?? "",
   });
-  const [utama, setUtama] = useState(false);
+  const [utama, setUtama] = useState(awal?.isDefault ?? false);
   /* Validate only after a submit attempt, so warga are not scolded while
      they are still typing the first character. */
   const [dicoba, setDicoba] = useState(false);
@@ -66,7 +69,7 @@ export function FormAlamat({
       label: isi.label.trim(),
       fullAddress: isi.fullAddress.trim(),
       landmark: isi.landmark.trim(),
-      rwChannelName: "RW 05 Sukamaju",
+      rwChannelName: awal?.rwChannelName ?? "RW 05 Sukamaju",
       isDefault: utama,
     });
   }
@@ -111,17 +114,20 @@ export function FormAlamat({
           onChange={(e) => setUtama(e.target.checked)}
           className="size-5 accent-hijau"
         />
-        <span className="text-[14px] font-medium">
-          Jadikan alamat utama
-        </span>
+        <span className="text-[14px] font-medium">Jadikan alamat utama</span>
       </label>
 
       <div className="flex gap-2 pt-1">
-        <Tombol type="button" varian="garis" onClick={onBatal} className="flex-1">
+        <Tombol
+          type="button"
+          varian="garis"
+          onClick={onBatal}
+          className="flex-1"
+        >
           Batal
         </Tombol>
         <Tombol type="submit" className="flex-[2]">
-          Simpan alamat
+          {awal ? "Simpan perubahan" : "Simpan alamat"}
         </Tombol>
       </div>
     </form>
