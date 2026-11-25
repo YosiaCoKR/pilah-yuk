@@ -126,6 +126,18 @@ r = await panggil("DELETE", `/api/alamat/${rumah}`, { sebagai: ORANG_LAIN });
 assert.equal(r.status, 404, "hapus alamat orang lain harus 404");
 lulus("DELETE alamat orang lain → 404");
 
+r = await panggil("PUT", `/api/alamat/${warung}/utama`, {
+  sebagai: ORANG_LAIN,
+});
+assert.equal(r.status, 404, "jadikan utama alamat orang lain harus 404");
+r = await panggil("GET", "/api/alamat", { sebagai: WARGA });
+assert.equal(
+  r.body.data[0].id,
+  rumah,
+  "alamat utama pemilik tidak boleh berubah",
+);
+lulus("PUT /:id/utama alamat orang lain → 404, utama pemilik tetap");
+
 /* --- ubah & hapus milik sendiri --- */
 r = await panggil("PATCH", `/api/alamat/${warung}`, {
   sebagai: WARGA,
