@@ -139,6 +139,13 @@ export const IkonLonceng = (p: P) => (
   </svg>
 );
 
+/* Diisi lewat `fill` dari luar (currentColor) saat bintangnya terpilih. */
+export const IkonBintang = (p: P & { fill?: string }) => (
+  <svg {...base} {...p}>
+    <path d="m12 4 2.4 5 5.4.7-4 3.8 1 5.3L12 16.2l-4.8 2.6 1-5.3-4-3.8 5.4-.7L12 4Z" />
+  </svg>
+);
+
 export const IkonTutup = (p: P) => (
   <svg {...base} {...p}>
     <path d="M6 6l12 12M18 6 6 18" />
