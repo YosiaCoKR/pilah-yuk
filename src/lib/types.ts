@@ -126,13 +126,7 @@ export type Invoice = {
 };
 
 export type Weekday =
-  | "Senin"
-  | "Selasa"
-  | "Rabu"
-  | "Kamis"
-  | "Jumat"
-  | "Sabtu"
-  | "Minggu";
+  "Senin" | "Selasa" | "Rabu" | "Kamis" | "Jumat" | "Sabtu" | "Minggu";
 
 export type RecurringSchedule = {
   id: string;
@@ -209,4 +203,13 @@ export type ChannelMember = {
   /** Umur keanggotaan atau permintaan, dalam hari. */
   agoDays: number;
   isPengurus?: boolean;
+};
+
+/** Penilaian warga atas satu penjemputan yang selesai. */
+export type Ulasan = {
+  pickupId: string;
+  nilai: 1 | 2 | 3 | 4 | 5;
+  tanda: string[];
+  catatan: string;
+  dikirim: string; // ISO date
 };

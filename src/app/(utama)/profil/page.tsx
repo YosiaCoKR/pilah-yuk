@@ -18,6 +18,11 @@ const MENU = [
     label: "Notifikasi",
     ket: "Pengingat dan kabar channel",
   },
+  {
+    href: "/umpan-balik",
+    label: "Penilaianku",
+    ket: "Umpan balik untuk petugas",
+  },
   { href: "/bantuan", label: "Pusat bantuan", ket: "Jawaban pertanyaan umum" },
 ];
 

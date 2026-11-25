@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { hariIniISO } from "@/lib/tanggal";
+import { simpanUlasan } from "@/lib/toko-ulasan";
+import type { Ulasan } from "@/lib/types";
 import { IkonBintang, IkonCentang } from "../ikon";
 import { Isian, Kartu, Label } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
-
-const KATA = ["", "Buruk", "Kurang", "Cukup", "Baik", "Sangat baik"];
+import { KATA_NILAI as KATA, RingkasUlasan } from "./ulasan-pickup";
 
 /* Pilihan cepat dipisah menurut nada nilai: warga yang memberi 2 bintang
    butuh kata untuk masalahnya, bukan pujian. */
@@ -32,7 +34,7 @@ export function FormUmpanBalik({
   const [nilai, setNilai] = useState(0);
   const [tanda, setTanda] = useState<string[]>([]);
   const [catatan, setCatatan] = useState("");
-  const [terkirim, setTerkirim] = useState(false);
+  const [terkirim, setTerkirim] = useState<Ulasan | null>(null);
   const [kirim, mulaiKirim] = useTransition();
 
   const pilihan = nilai >= 4 ? PUJIAN : KELUHAN;
@@ -44,8 +46,17 @@ export function FormUmpanBalik({
   }
 
   function simpan() {
-    // ponytail: data tiruan — belum dikirim ke mana pun sampai backend ada.
-    mulaiKirim(() => setTerkirim(true));
+    const u: Ulasan = {
+      pickupId,
+      nilai: nilai as Ulasan["nilai"],
+      tanda,
+      catatan: catatan.trim(),
+      dikirim: hariIniISO(),
+    };
+    mulaiKirim(() => {
+      simpanUlasan(u);
+      setTerkirim(u);
+    });
   }
 
   if (terkirim) {
@@ -61,9 +72,18 @@ export function FormUmpanBalik({
             {petugas} makin baik.
           </p>
         </div>
-        <TombolLink href={`/riwayat/${pickupId}`} varian="garis" lebar>
-          Kembali ke detail
-        </TombolLink>
+        {/* Rekap persis yang terkirim — warga tahu apa yang dibaca pengurus. */}
+        <Kartu className="p-4 text-left">
+          <RingkasUlasan u={terkirim} />
+        </Kartu>
+        <div className="space-y-2">
+          <TombolLink href={`/riwayat/${pickupId}`} varian="garis" lebar>
+            Kembali ke detail
+          </TombolLink>
+          <TombolLink href="/umpan-balik" varian="halus" lebar>
+            Lihat semua penilaianku
+          </TombolLink>
+        </div>
       </div>
     );
   }

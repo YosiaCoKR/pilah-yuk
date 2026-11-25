@@ -10,6 +10,7 @@ import type {
   Plan,
   Subscription,
   TimeSlot,
+  Ulasan,
   WasteCategory,
   WasteItem,
   WasteKey,
@@ -869,6 +870,25 @@ export const PENGGUNA = {
 export const HP_TERDAFTAR = ["081234567890", "085600112233"];
 /* Sandi semua akun tiruan di atas, buat mencoba jalur "sandi salah". */
 export const SANDI_TIRUAN = "rahasia123";
+
+/* Penilaian yang sudah pernah dikirim. pk-2, pk-4, pk-10 sengaja belum
+   dinilai supaya daftar "menunggu penilaian" punya isi. */
+export const ULASAN: Ulasan[] = [
+  {
+    pickupId: "pk-3",
+    nilai: 5,
+    tanda: ["Datang tepat waktu", "Petugas ramah"],
+    catatan: "Pak Dedi bantu angkat karung kardus sampai gerobak.",
+    dikirim: "2026-10-24",
+  },
+  {
+    pickupId: "pk-9",
+    nilai: 3,
+    tanda: ["Datang terlambat"],
+    catatan: "",
+    dikirim: "2026-10-18",
+  },
+];
 
 /* Pertanyaan yang paling sering masuk ke pengurus. Jawabannya sengaja
    menyebut angka & langkah konkret, bukan "silakan hubungi admin". */

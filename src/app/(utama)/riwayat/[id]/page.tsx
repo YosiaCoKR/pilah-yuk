@@ -8,7 +8,7 @@ import { AksiBukti } from "@/components/riwayat/aksi-bukti";
 import { KartuPetugas } from "@/components/riwayat/kartu-petugas";
 import { RincianSampah } from "@/components/riwayat/rincian-sampah";
 import { StatusJemput } from "@/components/status-jemput";
-import { TombolLink } from "@/components/tombol";
+import { UlasanPickup } from "@/components/umpan-balik/ulasan-pickup";
 import { addressById, slotById, SEMUA_PICKUP } from "@/lib/mock";
 import { hariPanjang, tanggalPanjang, tanggalPendek } from "@/lib/tanggal";
 
@@ -187,11 +187,7 @@ async function Isi({
         </section>
       )}
 
-      {selesai && (
-        <TombolLink href={`/umpan-balik/${pickup.id}`} varian="garis" lebar>
-          Nilai pelayanan petugas
-        </TombolLink>
-      )}
+      {selesai && <UlasanPickup pickupId={pickup.id} />}
     </main>
   );
 }
