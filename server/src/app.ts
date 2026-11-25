@@ -5,6 +5,7 @@ import { pesanValidasi } from "./galat";
 import type { Gateway } from "./pembayaran";
 import { ruteAkun } from "./routes/akun";
 import { ruteAlamat } from "./routes/alamat";
+import { ruteBantuan } from "./routes/bantuan";
 import { ruteChannel } from "./routes/channel";
 import { ruteJadwal } from "./routes/jadwal";
 import { ruteLangganan } from "./routes/langganan";
@@ -83,6 +84,7 @@ export function buatApp(
           .use(ruteChannel(db))
           .use(rutePanduan(db))
           .use(ruteUmpanBalik(db))
+          .use(ruteBantuan(db))
           .use(ruteWebhookBayar(db, midtransServerKey)),
       )
   );

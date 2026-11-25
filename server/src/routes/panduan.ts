@@ -10,7 +10,8 @@ import { wasteCategories, wasteGuideItems } from "../db/schema";
  * "100%" mendapat seluruh daftar, dan "_" mencocokkan huruf apa pun.
  * Backslash adalah escape bawaan LIKE di Postgres.
  */
-const kawalPola = (kata: string) => `%${kata.replace(/[\\%_]/g, "\\$&")}%`;
+export const kawalPola = (kata: string) =>
+  `%${kata.replace(/[\\%_]/g, "\\$&")}%`;
 
 /* Tong yang sebuah benda sering DIKIRA tempatnya — kolom sendiri, jadi butuh
    waste_categories kedua. */
@@ -133,7 +134,10 @@ export const rutePanduan = (db: Db) =>
      */
     .get("/", async () => {
       const [jenis, benda] = await Promise.all([
-        db.select().from(wasteCategories).orderBy(asc(wasteCategories.sortOrder)),
+        db
+          .select()
+          .from(wasteCategories)
+          .orderBy(asc(wasteCategories.sortOrder)),
         pilihBenda(db, undefined),
       ]);
 
@@ -267,9 +271,7 @@ export const rutePanduan = (db: Db) =>
           yang dibutuhkan rotasinya agar jatuh persis di batas hari.
         */
         query: t.Object({
-          tanggal: t.Optional(
-            t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
-          ),
+          tanggal: t.Optional(t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
         }),
       },
     )
