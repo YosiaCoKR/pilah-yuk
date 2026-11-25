@@ -3,6 +3,7 @@ import { Elysia, status, t } from "elysia";
 import { auth } from "../auth";
 import type { Db } from "../db";
 import { addresses, rwChannels } from "../db/schema";
+import { bentrokDengan } from "../galat";
 
 const BadanAlamat = t.Object({
   label: t.String({ minLength: 1, maxLength: 24 }),
@@ -161,15 +162,48 @@ export const ruteAlamat = (db: Db) =>
     .delete(
       "/:id",
       async ({ penggunaId, params }) => {
-        const [terhapus] = await db
-          .delete(addresses)
-          .where(
-            and(eq(addresses.id, params.id), eq(addresses.userId, penggunaId)),
-          )
-          .returning({ id: addresses.id });
+        try {
+          const terhapus = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .delete(addresses)
+              .where(
+                and(
+                  eq(addresses.id, params.id),
+                  eq(addresses.userId, penggunaId),
+                ),
+              )
+              .returning({ id: addresses.id, isDefault: addresses.isDefault });
+            /* Yang terhapus alamat utama → alamat terbaru naik jadi utama,
+               supaya pesanan berikutnya tetap punya alamat bawaan. */
+            if (row?.isDefault) {
+              const [ganti] = await tx
+                .select({ id: addresses.id })
+                .from(addresses)
+                .where(eq(addresses.userId, penggunaId))
+                .orderBy(desc(addresses.createdAt))
+                .limit(1);
+              if (ganti)
+                await tx
+                  .update(addresses)
+                  .set({ isDefault: true })
+                  .where(eq(addresses.id, ganti.id));
+            }
+            return row;
+          });
 
-        if (!terhapus) return status(404, { pesan: "Alamat tidak ditemukan." });
-        return { data: terhapus };
+          if (!terhapus)
+            return status(404, { pesan: "Alamat tidak ditemukan." });
+          return { data: { id: terhapus.id } };
+        } catch (e) {
+          /* Riwayat jemput menyimpan alamatnya (FK restrict): bukti lama
+             tidak boleh kehilangan lokasinya. */
+          if (bentrokDengan(e, "pickups_address_id_addresses_id_fk"))
+            return status(409, {
+              pesan:
+                "Alamat ini dipakai di riwayat jemput, jadi tidak bisa dihapus. Ubah saja isinya.",
+            });
+          throw e;
+        }
       },
       { params: ParamId },
     );

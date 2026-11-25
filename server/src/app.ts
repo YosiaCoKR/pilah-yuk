@@ -10,6 +10,7 @@ import { ruteJadwal } from "./routes/jadwal";
 import { ruteLangganan } from "./routes/langganan";
 import { rutePanduan } from "./routes/panduan";
 import { rutePesanan } from "./routes/pesanan";
+import { ruteProfil } from "./routes/profil";
 import { ruteRiwayat } from "./routes/riwayat";
 import { ruteSlotWaktu } from "./routes/slot-waktu";
 import { ruteWebhookBayar } from "./routes/webhook-bayar";
@@ -72,6 +73,7 @@ export function buatApp(
         app
           .use(ruteAkun(db, akun))
           .use(ruteAlamat(db))
+          .use(ruteProfil(db))
           .use(ruteSlotWaktu(db))
           .use(rutePesanan(db))
           .use(ruteLangganan(db, gateway))

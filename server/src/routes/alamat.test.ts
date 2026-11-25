@@ -60,7 +60,11 @@ lulus("POST /alamat → 201, label ter-trim, jadi utama");
 
 r = await panggil("POST", "/api/alamat", {
   sebagai: WARGA,
-  body: { label: "Warung", fullAddress: "Kios 7 Pasar Sukamaju, RT 06", isDefault: true },
+  body: {
+    label: "Warung",
+    fullAddress: "Kios 7 Pasar Sukamaju, RT 06",
+    isDefault: true,
+  },
 });
 assert.equal(r.status, 201);
 const warung = r.body.data.id;
@@ -137,5 +141,76 @@ r = await panggil("GET", "/api/alamat", { sebagai: WARGA });
 assert.equal(r.body.data.length, 1);
 lulus("DELETE milik sendiri → 200, daftar menyusut");
 
+/* --- hapus alamat utama: yang tersisa naik jadi utama --- */
+r = await panggil("POST", "/api/alamat", {
+  sebagai: WARGA,
+  body: { label: "Kantor", fullAddress: "Jl. Merdeka No. 9, RT 01" },
+});
+const kantor = r.body.data.id;
+r = await panggil("DELETE", `/api/alamat/${rumah}`, { sebagai: WARGA });
+assert.equal(r.status, 200);
+r = await panggil("GET", "/api/alamat", { sebagai: WARGA });
+assert.deepEqual(
+  r.body.data.map((a: any) => [a.id, a.isDefault]),
+  [[kantor, true]],
+  "alamat yang tersisa harus naik jadi utama",
+);
+lulus("DELETE alamat utama → alamat lain naik jadi utama");
+
+/* --- dipakai riwayat jemput → 409, bukan 500 --- */
+const [slot] = await db
+  .insert(schema.timeSlots)
+  .values({ label: "06–08", startTime: "06:00", endTime: "08:00", capacity: 5 })
+  .returning();
+await db.insert(schema.pickups).values({
+  code: "PY-9001",
+  userId: WARGA,
+  addressId: kantor,
+  pickupDate: "2026-11-03",
+  timeSlotId: slot.id,
+});
+r = await panggil("DELETE", `/api/alamat/${kantor}`, { sebagai: WARGA });
+assert.equal(r.status, 409, "alamat yang dipakai riwayat harus 409");
+lulus("DELETE alamat yang dipakai riwayat jemput → 409");
+
+/* === profil === */
+r = await panggil("GET", "/api/profil");
+assert.equal(r.status, 401);
+r = await panggil("GET", "/api/profil", { sebagai: WARGA });
+assert.equal(r.status, 200);
+assert.equal(r.body.data.fullName, "Bu Rina");
+assert.equal(r.body.data.phone, "0811");
+lulus("GET /profil → 200 milik sendiri, tanpa identitas → 401");
+
+r = await panggil("PATCH", "/api/profil", {
+  sebagai: WARGA,
+  body: { fullName: "  Rina Sari  ", email: "Rina@Contoh.ID", phone: "0899" },
+});
+assert.equal(r.status, 200);
+assert.equal(r.body.data.fullName, "Rina Sari");
+assert.equal(r.body.data.email, "rina@contoh.id");
+assert.equal(r.body.data.phone, "0811", "nomor HP tidak boleh berubah di sini");
+lulus("PATCH /profil: nama & email berubah, nomor HP tetap");
+
+r = await panggil("PATCH", "/api/profil", {
+  sebagai: ORANG_LAIN,
+  body: { email: "rina@contoh.id" },
+});
+assert.equal(r.status, 409, "email kembar harus 409");
+r = await panggil("PATCH", "/api/profil", { sebagai: WARGA, body: {} });
+assert.equal(r.status, 422, "tanpa isian harus 422");
+r = await panggil("PATCH", "/api/profil", {
+  sebagai: WARGA,
+  body: { fullName: "R", email: "bukan-email" },
+});
+assert.equal(r.status, 422);
+r = await panggil("PATCH", "/api/profil", {
+  sebagai: WARGA,
+  body: { email: "" },
+});
+assert.equal(r.status, 200);
+assert.equal(r.body.data.email, null);
+lulus("email kembar → 409, isian kosong/salah → 422, email boleh dihapus");
+
 await klien.close();
-console.log("\nSemua pemeriksaan API alamat lulus.");
+console.log("\nSemua pemeriksaan API alamat & profil lulus.");
