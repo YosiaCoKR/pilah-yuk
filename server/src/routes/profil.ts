@@ -3,7 +3,6 @@ import { Elysia, status, t } from "elysia";
 import { auth } from "../auth";
 import type { Db } from "../db";
 import { users } from "../db/schema";
-import { bentrokDengan } from "../galat";
 
 const pilihan = {
   id: users.id,
@@ -15,21 +14,15 @@ const pilihan = {
 };
 
 /*
-  Nomor HP sengaja TIDAK bisa diubah di sini: ia identitas masuk, disalin dari
-  Supabase Auth oleh trigger (migrasi 0012). Mengubahnya hanya di tabel ini
-  membuat profil dan akun masuk tidak sinkron. Ganti nomor butuh verifikasi
-  SMS lewat penyedia akun — alur sendiri, bukan PATCH profil.
+  Nomor HP dan email sengaja TIDAK bisa diubah di sini: keduanya identitas
+  akun, disalin dari Supabase Auth oleh trigger saat terverifikasi (migrasi
+  0012/0013). Menulisnya langsung berarti (1) profil dan akun masuk tidak
+  sinkron, dan (2) warga bisa "mengklaim" email/nomor orang lain tanpa
+  verifikasi — kolomnya unik, jadi verifikasi pemilik aslinya ikut gagal.
+  Ganti kontak harus lewat alur terverifikasi penyedia akun.
 */
 const BadanProfil = t.Object({
-  fullName: t.Optional(t.String({ minLength: 3, maxLength: 80 })),
-  /* "" atau null = hapus email. */
-  email: t.Optional(
-    t.Union([
-      t.Null(),
-      t.Literal(""),
-      t.String({ format: "email", maxLength: 254 }),
-    ]),
-  ),
+  fullName: t.String({ minLength: 3, maxLength: 80 }),
 });
 
 export const ruteProfil = (db: Db) =>
@@ -48,39 +41,13 @@ export const ruteProfil = (db: Db) =>
     .patch(
       "/",
       async ({ penggunaId, body }) => {
-        const email =
-          body.email === undefined
-            ? undefined
-            : body.email?.trim().toLowerCase() || null;
-        const ubah = {
-          ...(body.fullName !== undefined && {
-            fullName: body.fullName.trim(),
-          }),
-          ...(email !== undefined && { email }),
-        };
-        if (Object.keys(ubah).length === 0)
-          return status(422, { pesan: "Tidak ada yang diubah." });
-        try {
-          const [p] = await db
-            .update(users)
-            .set(ubah)
-            .where(eq(users.id, penggunaId))
-            .returning(pilihan);
-          if (!p) return status(404, { pesan: "Profil tidak ditemukan." });
-          return { data: p };
-        } catch (e) {
-          if (bentrokDengan(e, "users_email_idx"))
-            return status(409, {
-              pesan: "Email ini sudah dipakai akun lain.",
-            });
-          /* Kontak terakhir tidak boleh hilang: pengingat jemput dikirim ke
-             salah satunya. */
-          if (bentrokDengan(e, "users_punya_kontak"))
-            return status(422, {
-              pesan: "Email tidak bisa dihapus selama belum ada nomor HP.",
-            });
-          throw e;
-        }
+        const [p] = await db
+          .update(users)
+          .set({ fullName: body.fullName.trim() })
+          .where(eq(users.id, penggunaId))
+          .returning(pilihan);
+        if (!p) return status(404, { pesan: "Profil tidak ditemukan." });
+        return { data: p };
       },
       { body: BadanProfil },
     );

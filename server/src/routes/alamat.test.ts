@@ -196,33 +196,32 @@ lulus("GET /profil → 200 milik sendiri, tanpa identitas → 401");
 
 r = await panggil("PATCH", "/api/profil", {
   sebagai: WARGA,
-  body: { fullName: "  Rina Sari  ", email: "Rina@Contoh.ID", phone: "0899" },
+  body: {
+    fullName: "  Rina Sari  ",
+    email: "pak.dedi@contoh.id",
+    phone: "0899",
+  },
 });
 assert.equal(r.status, 200);
 assert.equal(r.body.data.fullName, "Rina Sari");
-assert.equal(r.body.data.email, "rina@contoh.id");
 assert.equal(r.body.data.phone, "0811", "nomor HP tidak boleh berubah di sini");
-lulus("PATCH /profil: nama & email berubah, nomor HP tetap");
+assert.equal(
+  r.body.data.email,
+  null,
+  "email tidak boleh diklaim tanpa verifikasi",
+);
+lulus(
+  "PATCH /profil: nama berubah; HP & email (identitas akun) tidak tersentuh",
+);
 
-r = await panggil("PATCH", "/api/profil", {
-  sebagai: ORANG_LAIN,
-  body: { email: "rina@contoh.id" },
-});
-assert.equal(r.status, 409, "email kembar harus 409");
 r = await panggil("PATCH", "/api/profil", { sebagai: WARGA, body: {} });
-assert.equal(r.status, 422, "tanpa isian harus 422");
+assert.equal(r.status, 422, "tanpa nama harus 422");
 r = await panggil("PATCH", "/api/profil", {
   sebagai: WARGA,
-  body: { fullName: "R", email: "bukan-email" },
+  body: { fullName: "R" },
 });
 assert.equal(r.status, 422);
-r = await panggil("PATCH", "/api/profil", {
-  sebagai: WARGA,
-  body: { email: "" },
-});
-assert.equal(r.status, 200);
-assert.equal(r.body.data.email, null);
-lulus("email kembar → 409, isian kosong/salah → 422, email boleh dihapus");
+lulus("PATCH /profil isian kosong/terlalu pendek → 422");
 
 await klien.close();
 console.log("\nSemua pemeriksaan API alamat & profil lulus.");
