@@ -13,6 +13,7 @@ import { rutePesanan } from "./routes/pesanan";
 import { ruteProfil } from "./routes/profil";
 import { ruteRiwayat } from "./routes/riwayat";
 import { ruteSlotWaktu } from "./routes/slot-waktu";
+import { ruteUmpanBalik } from "./routes/umpan-balik";
 import { ruteWebhookBayar } from "./routes/webhook-bayar";
 
 /**
@@ -81,6 +82,7 @@ export function buatApp(
           .use(ruteRiwayat(db))
           .use(ruteChannel(db))
           .use(rutePanduan(db))
+          .use(ruteUmpanBalik(db))
           .use(ruteWebhookBayar(db, midtransServerKey)),
       )
   );
