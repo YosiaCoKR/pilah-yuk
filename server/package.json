@@ -16,6 +16,7 @@
     "test:pesanan": "tsx src/routes/pesanan.test.ts",
     "test:langganan": "tsx src/routes/langganan.test.ts",
     "db:seed": "bun run src/db/seed.ts",
+    "db:atur": "bun run src/db/atur.ts",
     "test:status": "tsx src/routes/status-pesanan.test.ts",
     "test:jadwal": "tsx src/routes/jadwal.test.ts",
     "test:pengingat": "tsx src/pengingat.test.ts",
