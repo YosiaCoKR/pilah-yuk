@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { Elysia, ElysiaCustomStatusResponse } from "elysia";
 import type { PenyediaAkun } from "./akun";
 import type { Db } from "./db";
@@ -70,7 +71,23 @@ export function buatApp(
       })
       /* Dibaca plugin `auth` di setiap route: token → id warga. */
       .decorate("kenaliToken", akun?.kenali)
-      .get("/sehat", () => ({ status: "ok" }))
+      .get("/", () => ({
+        pesan:
+          "API Pilah Yuk jalan. Endpoint ada di /api/…, cek kesehatan di /sehat.",
+      }))
+      /* Ikut menyentuh DB: server hidup tapi DB putus harus kelihatan di sini. */
+      .get("/sehat", async ({ set }) => {
+        try {
+          await db.execute(sql`select 1`);
+          return { status: "ok", database: "tersambung" };
+        } catch {
+          set.status = 503;
+          return {
+            status: "gangguan",
+            database: "tidak tersambung — cek DATABASE_URL di server/.env",
+          };
+        }
+      })
       .group("/api", (app) =>
         app
           .use(ruteAkun(db, akun))
