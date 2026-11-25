@@ -57,6 +57,7 @@ assert.deepEqual(nama, [
   "channel_replies",
   "channel_schedules",
   "channel_threads",
+  "feedbacks",
   "payments",
   "percobaan_akun",
   "pickup_items",
@@ -895,6 +896,42 @@ for (const peran of ["anon", "authenticated"]) {
   }
 }
 console.log("✓ RLS users: profil hanya terbaca pemiliknya");
+
+/* feedbacks: satu penilaian per penjemputan, rating 1–5. U sudah dihapus
+   di atas, jadi warga & pesanannya dibuat sendiri di sini. */
+const F = "66666666-6666-6666-6666-666666666666";
+await db.query(
+  `insert into users (id, full_name, phone) values ($1, 'Pak Ulas', '0866')`,
+  [F],
+);
+const alamatF = await db.query<{ id: string }>(
+  `insert into addresses (user_id, label, full_address) values ($1, 'Rumah', 'Jl. Mawar No. 1') returning id`,
+  [F],
+);
+const pesanF = (kode: string) =>
+  db.query<{ id: string }>(
+    `insert into pickups (code, user_id, address_id, pickup_date, time_slot_id)
+     values ($1, $2, $3, '2026-11-04', $4) returning id`,
+    [kode, F, alamatF.rows[0].id, slot.rows[0].id],
+  );
+const [pkA, pkB] = [
+  (await pesanF("PY-U001")).rows[0].id,
+  (await pesanF("PY-U002")).rows[0].id,
+];
+const ulas = `insert into feedbacks (user_id, pickup_id, rating, tags, comment)
+              values ($1, $2, $3, $4, $5)`;
+await db.query(ulas, [F, pkA, 5, ["Petugas ramah"], "Mantap"]);
+console.log("  ✓ diterima: penilaian pertama");
+await gagal(
+  db,
+  ulas,
+  [F, pkA, 4, [], null],
+  "penilaian kedua untuk pickup yang sama",
+);
+await gagal(db, ulas, [F, pkB, 0, [], null], "rating 0");
+await gagal(db, ulas, [F, pkB, 6, [], null], "rating 6");
+await gagal(db, ulas, [F, pkB, 3, [], "x".repeat(501)], "komentar > 500 huruf");
+console.log("✓ feedbacks: constraint menggigit");
 
 await db.close();
 

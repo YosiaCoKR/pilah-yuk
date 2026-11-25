@@ -1060,6 +1060,49 @@ export const percobaanAkun = pgTable(
   (t) => [index("percobaan_akun_sampai_idx").on(t.sampai)],
 ).enableRLS();
 
+/** Penilaian warga atas satu penjemputan yang selesai. */
+export const feedbacks = pgTable(
+  "feedbacks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    pickupId: uuid("pickup_id")
+      .notNull()
+      .references(() => pickups.id, { onDelete: "cascade" }),
+    rating: smallint("rating").notNull(),
+    /* Pilihan cepat di layar ("Datang tepat waktu", …). */
+    tags: text("tags")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    comment: text("comment"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    /* Satu penjemputan, satu penilaian — ditegakkan DB, jadi dua kiriman
+       bersamaan tidak bisa sama-sama lolos. */
+    uniqueIndex("feedbacks_satu_per_pickup_idx").on(t.pickupId),
+    index("feedbacks_user_dibuat_idx").on(t.userId, t.createdAt.desc()),
+    check("feedbacks_rating_1_5", sql`${t.rating} between 1 and 5`),
+    check(
+      "feedbacks_komentar_wajar",
+      sql`${t.comment} is null or char_length(${t.comment}) <= 500`,
+    ),
+    /* Sama seperti pickups: hanya baca milik sendiri; menulis lewat API,
+       tempat aturan "hanya pickup selesai milikmu" ditegakkan. */
+    pgPolicy("feedbacks_baca_milik_sendiri", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`${t.userId} = ${authUid}`,
+    }),
+  ],
+);
+
+export type Feedback = typeof feedbacks.$inferSelect;
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type RecurringSchedule = typeof recurringSchedules.$inferSelect;
