@@ -1,9 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { cariFaq } from "@/lib/mock";
+import { CHANNELS, cariFaq } from "@/lib/mock";
 import { IkonCari, IkonLanjut, IkonTutup } from "../ikon";
 import { Kartu, Label } from "../primitif";
+import { TombolLink } from "../tombol";
+
+/**
+ * Ke mana bertanya kalau FAQ tidak menjawab: papan diskusi channel warga
+ * sendiri — di sana pengurusnya membaca. Belum punya channel → gabung dulu,
+ * karena tanpa channel memang tidak ada pengurus yang bisa ditanya.
+ */
+function KartuKontak({ kata }: { kata?: string }) {
+  const channel = CHANNELS.find((c) => c.isMember);
+  return (
+    <Kartu className="p-4">
+      <p className="text-[15px] font-semibold">
+        {kata ? `Belum ada jawaban untuk “${kata}”` : "Belum terjawab?"}
+      </p>
+      <p className="mt-1 text-[14px] leading-snug text-ink-2">
+        {channel
+          ? `Tanyakan ke ${channel.pengurus}, pengurus ${channel.name}, di papan diskusi. Biasanya dibalas di hari yang sama.`
+          : "Gabung channel RT/RW-mu dulu — pengurusnya yang menjawab pertanyaan soal jemput dan pembayaran."}
+      </p>
+      {kata && (
+        <p className="mt-1 text-[13px] leading-snug text-ink-3">
+          Atau coba kata yang lebih pendek, mis. “bayar” atau “jadwal”.
+        </p>
+      )}
+      <div className="mt-4">
+        <TombolLink
+          href={channel ? `/channel/${channel.id}/diskusi` : "/channel"}
+          varian={kata ? "utama" : "garis"}
+          lebar
+        >
+          {channel ? "Tanya di papan diskusi" : "Cari channel terdekat"}
+        </TombolLink>
+      </div>
+    </Kartu>
+  );
+}
 
 export function DaftarFaq() {
   const [cari, setCari] = useState("");
@@ -39,17 +75,9 @@ export function DaftarFaq() {
         {kata ? `${hasil.length} jawaban cocok dengan ${kata}` : ""}
       </p>
 
-      {kata && hasil.length === 0 && (
-        <Kartu className="p-6 text-center">
-          <p className="text-[15px] font-semibold">
-            Belum ada jawaban untuk “{kata}”
-          </p>
-          <p className="mt-1 text-[13px] leading-snug text-ink-2">
-            Coba kata lain yang lebih pendek, atau tanyakan langsung di channel
-            di bawah.
-          </p>
-        </Kartu>
-      )}
+      {/* Kosong → jalan keluarnya naik ke atas, bukan disuruh menggulir
+          mencari kartu kontak di dasar halaman. */}
+      {kata && hasil.length === 0 && <KartuKontak kata={kata} />}
 
       {topik.map((t) => (
         <section key={t} className="space-y-3">
@@ -79,6 +107,8 @@ export function DaftarFaq() {
           </Kartu>
         </section>
       ))}
+
+      {hasil.length > 0 && <KartuKontak />}
     </div>
   );
 }
