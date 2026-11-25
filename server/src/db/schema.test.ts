@@ -57,6 +57,7 @@ assert.deepEqual(nama, [
   "channel_replies",
   "channel_schedules",
   "channel_threads",
+  "faqs",
   "feedbacks",
   "payments",
   "percobaan_akun",

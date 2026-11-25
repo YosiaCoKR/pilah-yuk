@@ -1103,6 +1103,31 @@ export const feedbacks = pgTable(
 );
 
 export type Feedback = typeof feedbacks.$inferSelect;
+
+/** Pusat bantuan: pertanyaan umum, dikelompokkan per topik. */
+export const faqs = pgTable(
+  "faqs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    topic: text("topic").notNull(),
+    /* Unik: jadi sasaran upsert seed — jawaban yang diperbaiki menimpa
+       baris lama, bukan menambah pertanyaan kembar. */
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    /* Urutan disimpan: pertanyaan paling sering ditanya tampil duluan. */
+    sortOrder: smallint("sort_order").notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("faqs_question_idx").on(t.question),
+    index("faqs_urut_idx").on(t.sortOrder),
+    /* Bacaan umum, sama seperti panduan pilah. */
+    pgPolicy("faqs_baca_semua", {
+      for: "select",
+      to: authenticatedRole,
+      using: sql`true`,
+    }),
+  ],
+);
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type RecurringSchedule = typeof recurringSchedules.$inferSelect;

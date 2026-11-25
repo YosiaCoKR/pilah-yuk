@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { lulus, siapkan } from "../test/bantu";
 import { isiData } from "./seed";
-import { wasteCategories, wasteGuideItems } from "./schema";
+import { faqs, wasteCategories, wasteGuideItems } from "./schema";
 
 const { db, klien } = await siapkan();
 
@@ -96,6 +96,11 @@ assert.equal(
   (await db.select().from(wasteCategories)).length,
   4,
   "seed kedua menggandakan jenis",
+);
+assert.equal(
+  (await db.select().from(faqs)).length,
+  n.faq,
+  "seed kedua menggandakan FAQ",
 );
 lulus("aman dijalankan berulang: memperbarui, bukan menggandakan");
 

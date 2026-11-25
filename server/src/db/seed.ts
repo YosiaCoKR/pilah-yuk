@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { buatDb, type Db } from ".";
 import { env } from "../env";
 import {
+  faqs,
   subscriptionPlans,
   timeSlots,
   wasteCategories,
@@ -21,7 +22,6 @@ import {
 } from "./schema";
 
 export async function isiData(db: Db) {
-
   await db
     .insert(wasteCategories)
     .values([
@@ -202,7 +202,10 @@ export async function isiData(db: Db) {
       },
     });
 
-  const adaSlot = await db.select({ id: timeSlots.id }).from(timeSlots).limit(1);
+  const adaSlot = await db
+    .select({ id: timeSlots.id })
+    .from(timeSlots)
+    .limit(1);
   if (adaSlot.length === 0) {
     await db.insert(timeSlots).values([
       {
@@ -267,8 +270,73 @@ export async function isiData(db: Db) {
     ]);
   }
 
-  return { kategori: kunci.length, benda: BENDA.length };
+  /* Sama seperti panduan pilah: jawaban yang diperbaiki di sini harus
+     sampai ke warga, jadi baris lama diperbarui, bukan dilewati. */
+  await db
+    .insert(faqs)
+    .values(
+      FAQ.map(([topic, question, answer], i) => ({
+        topic,
+        question,
+        answer,
+        sortOrder: i + 1,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: faqs.question,
+      set: {
+        topic: sql`excluded.topic`,
+        answer: sql`excluded.answer`,
+        sortOrder: sql`excluded.sort_order`,
+      },
+    });
+
+  return { kategori: kunci.length, benda: BENDA.length, faq: FAQ.length };
 }
+
+/* [topik, pertanyaan, jawaban] — urutan = urutan tampil. */
+const FAQ: [string, string, string][] = [
+  [
+    "Penjemputan",
+    "Jam berapa petugas datang?",
+    "Sesuai slot yang kamu pilih saat memesan (mis. 06.00–08.00). Status berubah jadi “Dijemput” begitu petugas berangkat ke alamatmu.",
+  ],
+  [
+    "Penjemputan",
+    "Bagaimana kalau saya tidak di rumah?",
+    "Taruh sampah di depan pagar dan isi patokan alamat dengan jelas. Petugas tetap menimbang dan memotret bukti pengangkutan.",
+  ],
+  [
+    "Penjemputan",
+    "Bisa membatalkan atau menggeser jemput?",
+    "Bisa, selama statusnya masih “Menunggu”. Untuk jadwal rutin, pakai Jeda jadwal saat keluar kota — kuota tidak terpakai.",
+  ],
+  [
+    "Langganan & pembayaran",
+    "Pembayaran apa saja yang diterima?",
+    "QRIS, e-wallet (GoPay, OVO, DANA, ShopeePay), dan transfer virtual account bank. Langganan aktif otomatis begitu pembayaran terkonfirmasi.",
+  ],
+  [
+    "Langganan & pembayaran",
+    "Sudah bayar tapi langganan belum aktif?",
+    "Biasanya terkonfirmasi dalam 1–5 menit. Kalau lebih dari 30 menit, buka Tagihan lalu kirim bukti bayarnya ke pengurus channel.",
+  ],
+  [
+    "Langganan & pembayaran",
+    "Kuota jemput habis sebelum akhir bulan?",
+    "Kamu tetap bisa memesan jemput tambahan, atau naik ke paket dengan kuota lebih besar mulai periode berikutnya.",
+  ],
+  [
+    "Akun & channel",
+    "Kenapa harus gabung channel RT/RW?",
+    "Petugas dibagi per wilayah. Tanpa channel, pesananmu belum bisa diteruskan ke petugas yang melayani rumahmu.",
+  ],
+  [
+    "Akun & channel",
+    "Lupa kata sandi?",
+    "Di layar Masuk, pilih “Lupa kata sandi”, masukkan nomor HP, lalu ketik kode yang dikirim lewat SMS.",
+  ],
+];
 
 /* Hanya saat dijalankan langsung (`bun run src/db/seed.ts`). Di bawah tsx
    `import.meta.main` undefined, jadi pemeriksaan yang meng-import berkas ini
