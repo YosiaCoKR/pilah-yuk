@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ADDRESSES, slotById } from "@/lib/mock";
-import type { Address, DraftOrder } from "@/lib/types";
+import { slotById } from "@/lib/mock";
+import { simpanAlamat, useProfil } from "@/lib/toko-profil";
+import type { DraftOrder } from "@/lib/types";
 import { GerbangLangganan } from "../gerbang-langganan";
 import { PengingatLangganan } from "../pengingat-langganan";
 import { Label } from "../primitif";
@@ -21,18 +22,17 @@ type Bagian = "alamat" | "jenis" | "waktu";
  */
 export function FormPesan() {
   const router = useRouter();
+  /* Alamat dari toko profil: yang ditambah atau dijadikan utama di sini
+     langsung sama dengan yang terlihat di halaman Profil. */
+  const { alamat: daftarAlamat } = useProfil();
   const [draft, setDraft] = useState<DraftOrder>({
-    addressId: "addr-1",
+    addressId: daftarAlamat.find((a) => a.isDefault)?.id ?? null,
     categories: [],
     date: null,
     timeSlotId: null,
     notes: "",
   });
   const [mengirim, setMengirim] = useState(false);
-
-  /* Addresses live here so a newly added one is immediately selectable.
-     Swaps for the API call when the backend layer lands. */
-  const [daftarAlamat, setDaftarAlamat] = useState<Address[]>(ADDRESSES);
 
   const alamat = daftarAlamat.find((a) => a.id === draft.addressId);
   const slot = slotById(draft.timeSlotId);
@@ -76,14 +76,7 @@ export function FormPesan() {
             onPilih={(addressId) => setDraft((d) => ({ ...d, addressId }))}
             onTambah={(baru) => {
               const id = `addr-${Date.now()}`;
-              setDaftarAlamat((xs) => [
-                // Only one address can be primary, so adding a new primary
-                // demotes the previous one rather than leaving two marked.
-                ...(baru.isDefault
-                  ? xs.map((a) => ({ ...a, isDefault: false }))
-                  : xs),
-                { ...baru, id },
-              ]);
+              simpanAlamat({ ...baru, id });
               setDraft((d) => ({ ...d, addressId: id }));
             }}
           />

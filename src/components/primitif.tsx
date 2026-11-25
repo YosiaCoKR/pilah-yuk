@@ -104,6 +104,18 @@ export function ChipSampah({
 }
 
 /**
+ * Penanda alamat utama — satu bentuk di setiap daftar alamat (profil, pesan,
+ * jadwal rutin), supaya warga mengenalinya tanpa membaca ulang.
+ */
+export function PenandaUtama() {
+  return (
+    <span className="rounded-kartu border border-line bg-paper px-1.5 py-px text-[11px] font-semibold text-ink-2">
+      Utama
+    </span>
+  );
+}
+
+/**
  * Labelled form field with help text and an error line. Help text is always
  * present, not a tooltip — warga reading on a cheap phone should never have
  * to hover to learn what a field wants.

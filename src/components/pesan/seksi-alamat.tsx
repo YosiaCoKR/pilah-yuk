@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Address } from "@/lib/types";
 import { IkonCentang, IkonPeta, IkonTambah } from "../ikon";
 import { Lembar } from "../lembar";
-import { Label } from "../primitif";
+import { Label, PenandaUtama } from "../primitif";
 import { FormAlamat } from "./form-alamat";
 
 export function SeksiAlamat({
@@ -61,11 +61,7 @@ export function SeksiAlamat({
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-[15px] font-semibold">{a.label}</span>
-                    {a.isDefault && (
-                      <span className="rounded-kartu border border-line bg-paper px-1.5 py-px text-[11px] font-semibold text-ink-2">
-                        Utama
-                      </span>
-                    )}
+                    {a.isDefault && <PenandaUtama />}
                   </span>
                   <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
                     {a.fullAddress}

@@ -8,7 +8,7 @@ import type { Address } from "@/lib/types";
 import { IkonTambah } from "../ikon";
 import { Lembar } from "../lembar";
 import { FormAlamat } from "../pesan/form-alamat";
-import { Kartu, Label } from "../primitif";
+import { Kartu, Label, PenandaUtama } from "../primitif";
 
 /* 081234567890 → 0812-3456-7890: lebih gampang dicocokkan dengan mata. */
 const hpTerbaca = (hp: string) => hp.replace(/(\d{4})(\d{4})(\d+)/, "$1-$2-$3");
@@ -25,6 +25,8 @@ export function IsiProfil() {
     setSasaran(s);
     setBuka((n) => n + 1);
   };
+  /* Alamat utama selalu di atas — itu yang dipakai untuk pesanan baru. */
+  const urut = [...alamat].sort((a, b) => +b.isDefault - +a.isDefault);
   const ubah = typeof sasaran === "object" && sasaran ? sasaran : undefined;
 
   return (
@@ -79,15 +81,11 @@ export function IsiProfil() {
           Alamat tersimpan
         </Label>
         <ul className="space-y-2">
-          {alamat.map((a) => (
+          {urut.map((a) => (
             <Kartu as="li" key={a.id} className="p-4">
               <p className="flex items-center gap-2 text-[15px] font-semibold">
                 {a.label}
-                {a.isDefault && (
-                  <span className="rounded-kartu border border-hijau/40 px-1.5 text-[11px] font-semibold text-hijau">
-                    Utama
-                  </span>
-                )}
+                {a.isDefault && <PenandaUtama />}
               </p>
               <p className="mt-0.5 text-[14px] leading-snug">{a.fullAddress}</p>
               <p className="mt-0.5 text-[13px] leading-snug text-ink-2">
@@ -102,6 +100,15 @@ export function IsiProfil() {
                 >
                   Ubah
                 </button>
+                {!a.isDefault && (
+                  <button
+                    type="button"
+                    onClick={() => simpanAlamat({ ...a, isDefault: true })}
+                    className="min-h-9 text-ink-2"
+                  >
+                    Jadikan utama
+                  </button>
+                )}
                 {/* Alamat terakhir tidak bisa dihapus: tanpa alamat, warga
                     tidak bisa memesan jemput sama sekali. */}
                 {alamat.length > 1 && (

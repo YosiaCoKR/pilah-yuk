@@ -2,18 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  ADDRESSES,
-  TIME_SLOTS,
-  WASTE_CATEGORIES,
-  WASTE_COLOR,
-} from "@/lib/mock";
+import { TIME_SLOTS, WASTE_CATEGORIES, WASTE_COLOR } from "@/lib/mock";
 import { urutkanHari } from "@/lib/kalimat";
+import { useProfil } from "@/lib/toko-profil";
 import { RingkasanRutin } from "./ringkasan-rutin";
 import type { RecurringSchedule, WasteKey, Weekday } from "@/lib/types";
 import { GerbangLangganan } from "../gerbang-langganan";
 import { IkonCentang, IkonJam, IkonPeta } from "../ikon";
-import { Label } from "../primitif";
+import { Label, PenandaUtama } from "../primitif";
 import { Sakelar } from "../sakelar";
 import { Tombol } from "../tombol";
 
@@ -31,6 +27,7 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
   const router = useRouter();
   const [hari, setHari] = useState<Weekday[]>(awal.days);
   const [slotId, setSlotId] = useState(awal.timeSlotId);
+  const { alamat } = useProfil();
   const [alamatId, setAlamatId] = useState(awal.addressId);
   const [jenis, setJenis] = useState<WasteKey[]>(awal.categories);
   const [pengingat, setPengingat] = useState(awal.reminderEnabled);
@@ -148,7 +145,7 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
       <section className="space-y-3">
         <Label>Alamat</Label>
         <ul className="space-y-2">
-          {ADDRESSES.map((a) => {
+          {alamat.map((a) => {
             const aktif = a.id === alamatId;
             return (
               <li key={a.id}>
@@ -166,8 +163,11 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
                     className={`mt-0.5 size-5 shrink-0 ${aktif ? "text-hijau" : "text-ink-3"}`}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-semibold">
-                      {a.label}
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-[15px] font-semibold">
+                        {a.label}
+                      </span>
+                      {a.isDefault && <PenandaUtama />}
                     </span>
                     <span className="block text-[13px] leading-snug text-ink-2">
                       {a.fullAddress}
