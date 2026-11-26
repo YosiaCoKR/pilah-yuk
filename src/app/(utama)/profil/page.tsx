@@ -3,6 +3,7 @@ import { IkonLanjut } from "@/components/ikon";
 import { Kartu, Label } from "@/components/primitif";
 import { IsiProfil } from "@/components/profil/isi-profil";
 import { TombolLink } from "@/components/tombol";
+import { akunku, alamatku } from "@/lib/data";
 
 export const metadata = { title: "Profil — Pilah Yuk" };
 
@@ -26,7 +27,8 @@ const MENU = [
   { href: "/bantuan", label: "Pusat bantuan", ket: "Jawaban pertanyaan umum" },
 ];
 
-export default function ProfilPage() {
+export default async function ProfilPage() {
+  const [akun, alamat] = await Promise.all([akunku(), alamatku()]);
   return (
     <main className="space-y-7">
       <header>
@@ -36,7 +38,7 @@ export default function ProfilPage() {
         </p>
       </header>
 
-      <IsiProfil />
+      <IsiProfil akun={akun} alamat={alamat} />
 
       <section className="space-y-3">
         <Label>Lainnya</Label>

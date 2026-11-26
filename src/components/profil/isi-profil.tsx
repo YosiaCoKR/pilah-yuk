@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import type { Akun } from "@/lib/data";
+import type { Jawaban } from "@/lib/kirim";
 import { bulanTahun } from "@/lib/tanggal";
-import { hapusAlamat, simpanAlamat, useProfil } from "@/lib/toko-profil";
+import { hapusAlamat, simpanAlamat } from "@/lib/toko-profil";
 import type { Address } from "@/lib/types";
 import { IkonTambah } from "../ikon";
 import { Lembar } from "../lembar";
@@ -14,8 +17,25 @@ import { Kartu, Label, PenandaUtama } from "../primitif";
 const hpTerbaca = (hp: string) => hp.replace(/(\d{4})(\d{4})(\d+)/, "$1-$2-$3");
 
 /** Kartu akun + alamat tersimpan, keduanya bisa diubah di tempat. */
-export function IsiProfil() {
-  const { akun: p, alamat } = useProfil();
+export function IsiProfil({
+  akun: p,
+  alamat,
+}: {
+  akun: Akun;
+  alamat: Address[];
+}) {
+  const router = useRouter();
+  const [galat, setGalat] = useState<string | null>(null);
+  const [, mulai] = useTransition();
+  /* Setelah tiap ubahan, daftar dibaca ulang dari server. */
+  const jalankan = (aksi: () => Promise<Jawaban<unknown>>, lalu?: () => void) =>
+    mulai(async () => {
+      const h = await aksi();
+      setGalat(h.ok ? null : h.pesan);
+      if (!h.ok) return;
+      lalu?.();
+      router.refresh();
+    });
   /* null = lembar tertutup, "baru" = tambah, Address = ubah yang itu. */
   const [sasaran, setSasaran] = useState<Address | "baru" | null>(null);
   /* Naik tiap lembar dibuka → form dirender ulang dengan isian segar. */
@@ -31,6 +51,11 @@ export function IsiProfil() {
 
   return (
     <>
+      {galat && (
+        <p role="alert" className="text-[13px] text-alarm">
+          {galat}
+        </p>
+      )}
       <Kartu as="section" className="flex items-start gap-4 p-4">
         <span
           aria-hidden
@@ -103,7 +128,11 @@ export function IsiProfil() {
                 {!a.isDefault && (
                   <button
                     type="button"
-                    onClick={() => simpanAlamat({ ...a, isDefault: true })}
+                    onClick={() =>
+                      jalankan(() =>
+                        simpanAlamat({ ...a, isDefault: true }, a.id),
+                      )
+                    }
                     className="min-h-9 text-ink-2"
                   >
                     Jadikan utama
@@ -114,7 +143,10 @@ export function IsiProfil() {
                 {alamat.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => hapusAlamat(a.id)}
+                    onClick={() => {
+                      if (confirm(`Hapus alamat ${a.label}?`))
+                        jalankan(() => hapusAlamat(a.id));
+                    }}
                     className="min-h-9 text-alarm"
                   >
                     Hapus
@@ -135,10 +167,12 @@ export function IsiProfil() {
           key={buka}
           awal={ubah}
           onBatal={() => setSasaran(null)}
-          onSimpan={(a) => {
-            simpanAlamat({ ...a, id: ubah?.id ?? `addr-${Date.now()}` });
-            setSasaran(null);
-          }}
+          onSimpan={(a) =>
+            jalankan(
+              () => simpanAlamat(a, ubah?.id),
+              () => setSasaran(null),
+            )
+          }
         />
       </Lembar>
     </>
