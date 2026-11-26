@@ -572,6 +572,15 @@ try {
   await assert.rejects(supa.keluar("t"), (e: GalatAkun) => e.status === 502);
   lulus("klien GoTrue: sandi salah → 401, token basi tetap dianggap keluar");
 
+  jawab = () => [422, { error_code: "phone_provider_disabled" }];
+  await assert.rejects(
+    supa.masuk("081234567890", "rahasia123"),
+    (e: GalatAkun) => e.status === 503,
+  );
+  lulus(
+    "klien GoTrue: login HP dimatikan di Supabase → 503, bukan sandi salah",
+  );
+
   terkirim.length = 0;
   jawab = () => [200, { id: "u1" }];
   assert.equal(await supa.kenali("tok"), "u1");

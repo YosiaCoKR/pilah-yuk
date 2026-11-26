@@ -50,7 +50,7 @@ export type PenyediaAkun = {
 export class GalatAkun extends Error {
   constructor(
     readonly pesan: string,
-    readonly status: 401 | 409 | 422 | 429 | 502,
+    readonly status: 401 | 409 | 422 | 429 | 502 | 503,
   ) {
     super(pesan);
   }
@@ -123,12 +123,22 @@ export function buatSupabaseAuth(
         body: method === "GET" ? undefined : JSON.stringify(badan),
         signal: AbortSignal.timeout(10_000),
       });
-      return {
-        ok: res.ok,
-        kode: res.status,
-        j: (await res.json().catch(() => ({}))) as JawabanGoTrue,
-      };
-    } catch {
+      const j = (await res.json().catch(() => ({}))) as JawabanGoTrue;
+      /* Proyek Supabase belum menyalakan login nomor HP: salah setelan
+         server, bukan salah warga. Tanpa ini ia tersamar jadi "sandi salah"
+         dan warga mengulang-ulang sandi yang sebenarnya benar. */
+      if (j.error_code === "phone_provider_disabled") {
+        console.error(
+          "Supabase: Authentication → Providers → Phone belum dinyalakan.",
+        );
+        throw new GalatAkun(
+          "Layanan akun sedang ditutup sementara. Coba lagi nanti.",
+          503,
+        );
+      }
+      return { ok: res.ok, kode: res.status, j };
+    } catch (e) {
+      if (e instanceof GalatAkun) throw e;
       /* Jaringan/timeout. Nama host dan jejak internal tidak diteruskan. */
       throw new GalatAkun(
         "Layanan akun sedang tidak bisa dihubungi. Coba lagi sebentar lagi.",
