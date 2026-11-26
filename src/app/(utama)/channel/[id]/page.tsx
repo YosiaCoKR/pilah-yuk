@@ -10,14 +10,9 @@ import {
 } from "@/components/ikon";
 import { Kop } from "@/components/kop";
 import { Kartu, Label, Perforasi } from "@/components/primitif";
-import { umurHari } from "@/lib/kalimat";
-import {
-  anggotaByChannel,
-  channelById,
-  diskusiByChannel,
-  jarakTerbaca,
-  pengumumanByChannel,
-} from "@/lib/mock";
+import { TombolGabung } from "@/components/channel/tombol-gabung";
+import { diskusi, pengumuman as bacaPengumuman, satuChannel } from "@/lib/data";
+import { jarakTerbaca, umurHari } from "@/lib/kalimat";
 
 export default function DetailChannelPage(props: PageProps<"/channel/[id]">) {
   return (
@@ -55,15 +50,16 @@ async function Isi({
   params: PageProps<"/channel/[id]">["params"];
 }) {
   const { id } = await params;
-  const channel = channelById(id);
+  const channel = await satuChannel(id);
   if (!channel) notFound();
 
   const { hari, jam } = pecahJadwal(channel.scheduleInfo);
-  const pengumuman = pengumumanByChannel(id);
-  const utas = diskusiByChannel(id);
-  const menunggu = anggotaByChannel(id).filter(
-    (a) => a.status === "menunggu",
-  ).length;
+  /* Pengumuman & diskusi hanya untuk anggota — selain itu daftar kosong. */
+  const [pengumuman, utas] = await Promise.all([
+    bacaPengumuman(id),
+    diskusi(id),
+  ]);
+  const { menunggu } = channel;
 
   return (
     <main className="space-y-6 px-4 pb-10 pt-5">
@@ -145,12 +141,12 @@ async function Isi({
             pengumuman supaya layar channel tetap soal jadwal angkut. */}
         <Label
           aksi={
-            pengumuman.length > 1 ? (
+            channel.jumlahPengumuman > 1 ? (
               <Link
                 href={`/channel/${channel.id}/pengumuman`}
                 className="text-[13px] font-semibold text-hijau hover:underline"
               >
-                Semua {pengumuman.length}
+                Semua {channel.jumlahPengumuman}
               </Link>
             ) : undefined
           }
@@ -240,6 +236,12 @@ async function Isi({
             Jadwal di atas berlaku untuk warga channel ini. Gabung dulu supaya
             pesanan jemputmu diteruskan ke petugasnya.
           </p>
+          <div className="mt-3">
+            <TombolGabung
+              channelId={channel.id}
+              menunggu={channel.membership === "menunggu"}
+            />
+          </div>
         </Kartu>
       )}
     </main>

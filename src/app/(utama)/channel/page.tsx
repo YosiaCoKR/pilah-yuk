@@ -1,16 +1,15 @@
 import { KartuChannel } from "@/components/channel/kartu-channel";
 import { Kartu, Label } from "@/components/primitif";
-import { CHANNELS, jarakTerbaca } from "@/lib/mock";
+import { daftarChannel } from "@/lib/data";
+import { jarakTerbaca } from "@/lib/kalimat";
 
 export const metadata = { title: "Channel RT/RW — Pilah Yuk" };
 
-export default function ChannelPage() {
-  const milikku = CHANNELS.filter((c) => c.isMember);
-  /* Yang terdekat lebih dulu — itu urutan yang berguna saat memilih channel,
-     bukan urutan abjad. */
-  const lainnya = CHANNELS.filter((c) => !c.isMember).sort(
-    (a, b) => a.distanceM - b.distanceM,
-  );
+export default async function ChannelPage() {
+  const semua = await daftarChannel();
+  const milikku = semua.filter((c) => c.isMember);
+  /* Yang terdekat lebih dulu (tanpa titik paling bawah) — sudah diurut API. */
+  const lainnya = semua.filter((c) => !c.isMember);
 
   return (
     <main className="space-y-7">
@@ -65,7 +64,9 @@ export default function ChannelPage() {
       </section>
 
       <Kartu className="p-4">
-        <p className="text-[14px] font-semibold">Kenapa harus gabung channel?</p>
+        <p className="text-[14px] font-semibold">
+          Kenapa harus gabung channel?
+        </p>
         <p className="mt-1 text-[13px] leading-snug text-ink-2">
           Pesanan jemputmu masuk ke petugas channel sesuai alamat. Tanpa
           channel, tidak ada petugas yang menerima permintaan.

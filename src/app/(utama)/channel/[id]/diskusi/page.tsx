@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { PapanDiskusi } from "@/components/channel/papan-diskusi";
 import { Kop } from "@/components/kop";
 import { Kartu } from "@/components/primitif";
-import { channelById } from "@/lib/mock";
+import { diskusi, satuChannel } from "@/lib/data";
 
 /** Papan diskusi warga satu channel: tanya jawab & koordinasi antar warga. */
 export default function DiskusiChannelPage(
@@ -36,8 +36,9 @@ async function Isi({
   params: PageProps<"/channel/[id]/diskusi">["params"];
 }) {
   const { id } = await params;
-  const channel = channelById(id);
+  const channel = await satuChannel(id);
   if (!channel) notFound();
+  const utas = await diskusi(id);
 
   return (
     <>
@@ -47,7 +48,16 @@ async function Isi({
         kembali={`/channel/${id}`}
       />
       <main className="px-4 pb-10 pt-5">
-        <PapanDiskusi channelId={id} />
+        {channel.isMember ? (
+          <PapanDiskusi channelId={id} utas={utas} />
+        ) : (
+          <Kartu className="p-6 text-center">
+            <p className="text-[15px] font-semibold">Khusus anggota channel</p>
+            <p className="mt-1 text-[13px] leading-snug text-ink-2">
+              Gabung {channel.name} dulu untuk ikut diskusi warga.
+            </p>
+          </Kartu>
+        )}
       </main>
     </>
   );

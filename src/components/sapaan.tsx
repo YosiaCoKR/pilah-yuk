@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useNilaiKlien } from "@/lib/klien";
 import { salam } from "@/lib/kalimat";
-import { useAnggota } from "@/lib/toko-anggota";
 import { Kartu } from "./primitif";
 
 /** Salam menurut jam perangkat warga; "Halo," selama prerender. */
@@ -17,8 +16,14 @@ export function Salam() {
  * yang sama dengan halaman Kelola Anggota, jadi angkanya turun begitu
  * permintaan disetujui di sana.
  */
-export function PermintaanGabung({ channelId }: { channelId: string }) {
-  const n = useAnggota(channelId).filter((a) => a.status === "menunggu").length;
+export function PermintaanGabung({
+  channelId,
+  n,
+}: {
+  channelId: string;
+  /** Jumlah permintaan gabung yang belum diputus. */
+  n: number;
+}) {
   if (!n) return null;
   return (
     <Link href={`/channel/${channelId}/anggota`} className="block">

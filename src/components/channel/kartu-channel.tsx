@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { jarakTerbaca } from "@/lib/mock";
+import { jarakTerbaca } from "@/lib/kalimat";
 import type { Channel } from "@/lib/types";
 import { IkonChannel, IkonJadwal, IkonPeta } from "../ikon";
 import { Kartu } from "../primitif";
@@ -14,7 +14,10 @@ import { Kartu } from "../primitif";
 export function KartuChannel({ channel }: { channel: Channel }) {
   return (
     <Kartu as="li" className="overflow-hidden">
-      <Link href={`/channel/${channel.id}`} className="block p-4 hover:bg-paper">
+      <Link
+        href={`/channel/${channel.id}`}
+        className="block p-4 hover:bg-paper"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-[16px] font-bold leading-tight">

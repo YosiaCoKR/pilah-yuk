@@ -4,7 +4,7 @@ import { IkonChannel } from "@/components/ikon";
 import { Kop } from "@/components/kop";
 import { Kartu } from "@/components/primitif";
 import { umurHari } from "@/lib/kalimat";
-import { channelById, pengumumanByChannel } from "@/lib/mock";
+import { pengumuman as bacaPengumuman, satuChannel } from "@/lib/data";
 
 /**
  * Semua pengumuman pengurus satu channel, terbaru di atas.
@@ -43,10 +43,11 @@ async function Isi({
   params: PageProps<"/channel/[id]/pengumuman">["params"];
 }) {
   const { id } = await params;
-  const channel = channelById(id);
+  const channel = await satuChannel(id);
   if (!channel) notFound();
 
-  const pengumuman = pengumumanByChannel(id);
+  /* Hanya anggota yang menerima isinya; selain itu daftar kosong. */
+  const pengumuman = await bacaPengumuman(id);
 
   return (
     <>
@@ -72,7 +73,9 @@ async function Isi({
                 <article>
                   {/* Umurnya di atas judul: yang pertama ditimbang warga adalah
                       apakah pengumuman ini masih berlaku. */}
-                  <p className="text-[12px] text-ink-3">{umurHari(p.agoDays)}</p>
+                  <p className="text-[12px] text-ink-3">
+                    {umurHari(p.agoDays)}
+                  </p>
                   <h2 className="mt-0.5 text-[16px] font-bold leading-tight">
                     {p.title}
                   </h2>

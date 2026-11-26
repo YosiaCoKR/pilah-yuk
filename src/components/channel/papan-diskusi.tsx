@@ -1,9 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { umurHari } from "@/lib/kalimat";
-import { kirimBalasan, kirimUtas, useDiskusi } from "@/lib/toko-diskusi";
-import type { ChannelComment } from "@/lib/types";
+import type { Jawaban } from "@/lib/kirim";
+import { kirimBalasan, kirimUtas } from "@/lib/toko-diskusi";
+import type { ChannelComment, ChannelThread } from "@/lib/types";
 import { Kartu, Label } from "../primitif";
 import { Tombol } from "../tombol";
 import { KomposerDiskusi } from "./komposer-diskusi";
@@ -15,9 +17,23 @@ import { KomposerDiskusi } from "./komposer-diskusi";
  * percakapan. Jawaban pengurus diberi penanda jabatan karena di papan RT
  * itulah yang membedakan "kata warga" dari "kata yang berlaku".
  */
-export function PapanDiskusi({ channelId }: { channelId: string }) {
-  const utas = useDiskusi(channelId);
+export function PapanDiskusi({
+  channelId,
+  utas,
+}: {
+  channelId: string;
+  utas: ChannelThread[];
+}) {
+  const router = useRouter();
   const [balasKe, setBalasKe] = useState<string | null>(null);
+
+  /* Tulisan baru langsung terlihat: papan dibaca ulang dari server. */
+  async function lalu(h: Promise<Jawaban<unknown>>) {
+    const j = await h;
+    if (!j.ok) return j.pesan;
+    router.refresh();
+    return null;
+  }
 
   return (
     <div className="space-y-7">
@@ -26,7 +42,7 @@ export function PapanDiskusi({ channelId }: { channelId: string }) {
         <KomposerDiskusi
           ajakan="Tulis pertanyaan atau info untuk warga channel ini…"
           tombol="Kirim pertanyaan"
-          onKirim={(isi) => kirimUtas(channelId, isi)}
+          onKirim={(isi) => lalu(kirimUtas(channelId, isi))}
         />
       </section>
 
@@ -47,8 +63,8 @@ export function PapanDiskusi({ channelId }: { channelId: string }) {
           <Kartu className="p-6 text-center">
             <p className="text-[15px] font-semibold">Papan masih kosong</p>
             <p className="mt-1 text-[13px] leading-snug text-ink-2">
-              Belum ada yang bertanya di channel ini. Pertanyaan pertama biasanya
-              soal jam angkut.
+              Belum ada yang bertanya di channel ini. Pertanyaan pertama
+              biasanya soal jam angkut.
             </p>
           </Kartu>
         ) : (
@@ -81,9 +97,10 @@ export function PapanDiskusi({ channelId }: { channelId: string }) {
                         tombol="Kirim balasan"
                         fokusAwal
                         onBatal={() => setBalasKe(null)}
-                        onKirim={(isi) => {
-                          kirimBalasan(channelId, u.id, isi);
-                          setBalasKe(null);
+                        onKirim={async (isi) => {
+                          const galat = await lalu(kirimBalasan(u.id, isi));
+                          if (!galat) setBalasKe(null);
+                          return galat;
                         }}
                       />
                     ) : (

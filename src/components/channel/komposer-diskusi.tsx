@@ -28,7 +28,8 @@ export function KomposerDiskusi({
 }: {
   ajakan: string;
   tombol: string;
-  onKirim: (isi: string) => void;
+  /** Kembalikan pesan galat untuk ditampilkan, atau null kalau terkirim. */
+  onKirim: (isi: string) => Promise<string | null>;
   onBatal?: () => void;
   /** Balasan dibuka atas permintaan warga, jadi kursornya langsung di sana. */
   fokusAwal?: boolean;
@@ -53,9 +54,11 @@ export function KomposerDiskusi({
       return;
     }
     setSalah(null);
-    mulaiKirim(() => {
-      onKirim(bersih);
-      setIsi("");
+    mulaiKirim(async () => {
+      const galat = await onKirim(bersih);
+      /* Gagal → tulisan tetap di kotak, tidak perlu diketik ulang. */
+      if (galat) setSalah(galat);
+      else setIsi("");
     });
   }
 

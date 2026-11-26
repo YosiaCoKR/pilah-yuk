@@ -4,7 +4,7 @@ import { DaftarAnggota } from "@/components/channel/daftar-anggota";
 import { Kop } from "@/components/kop";
 import { Kartu } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
-import { channelById } from "@/lib/mock";
+import { anggota, satuChannel } from "@/lib/data";
 
 /** Kelola anggota channel — khusus pengurus channel yang bersangkutan. */
 export default function AnggotaChannelPage(
@@ -37,8 +37,9 @@ async function Isi({
   params: PageProps<"/channel/[id]/anggota">["params"];
 }) {
   const { id } = await params;
-  const channel = channelById(id);
+  const channel = await satuChannel(id);
   if (!channel) notFound();
+  const daftar = channel.isManager ? await anggota(id) : [];
 
   return (
     <>
@@ -49,9 +50,9 @@ async function Isi({
       />
       <main className="px-4 pb-10 pt-5">
         {/* Pagar peran dipasang di layar juga, bukan hanya di menu: tautannya
-            bisa dibagikan ke siapa saja. Pagar sebenarnya menyusul di API. */}
+            bisa dibagikan ke siapa saja. Pagar sebenarnya ada di API. */}
         {channel.isManager ? (
-          <DaftarAnggota channelId={id} />
+          <DaftarAnggota channelId={id} anggota={daftar} />
         ) : (
           <Kartu className="p-6 text-center">
             <p className="text-[15px] font-semibold">Khusus pengurus channel</p>

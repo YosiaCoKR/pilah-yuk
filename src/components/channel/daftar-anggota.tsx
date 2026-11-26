@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { lamaAnggota, umurHari } from "@/lib/kalimat";
-import { hapusAnggota, setujuiAnggota, useAnggota } from "@/lib/toko-anggota";
+import type { Jawaban } from "@/lib/kirim";
+import { hapusAnggota, setujuiAnggota } from "@/lib/toko-anggota";
 import type { ChannelMember } from "@/lib/types";
 import { Kartu, Label } from "../primitif";
 import { Tombol } from "../tombol";
@@ -16,8 +18,23 @@ import { KonfirmasiKeluarkan, type AksiKeluar } from "./konfirmasi-keluarkan";
  * yang menghapus orang dari channel (tolak & keluarkan) selalu lewat lembar
  * konfirmasi — pengurus menekannya di ponsel, sambil berdiri.
  */
-export function DaftarAnggota({ channelId }: { channelId: string }) {
-  const anggota = useAnggota(channelId);
+export function DaftarAnggota({
+  channelId,
+  anggota,
+}: {
+  channelId: string;
+  anggota: ChannelMember[];
+}) {
+  const router = useRouter();
+  const [galat, setGalat] = useState<string | null>(null);
+  const [, mulai] = useTransition();
+  /* Setelah tiap keputusan daftar dibaca ulang dari server. */
+  const jalankan = (aksi: () => Promise<Jawaban<unknown>>) =>
+    mulai(async () => {
+      const h = await aksi();
+      setGalat(h.ok ? null : h.pesan);
+      if (h.ok) router.refresh();
+    });
   /* Satu lembar untuk seluruh daftar: yang disimpan adalah siapa yang sedang
      dikonfirmasi, bukan satu keadaan per baris. */
   const [konfirmasi, setKonfirmasi] = useState<{
@@ -30,6 +47,11 @@ export function DaftarAnggota({ channelId }: { channelId: string }) {
 
   return (
     <div className="space-y-7">
+      {galat && (
+        <p role="alert" className="text-[13px] text-alarm">
+          {galat}
+        </p>
+      )}
       <section className="space-y-3">
         <Label
           aksi={
@@ -61,16 +83,16 @@ export function DaftarAnggota({ channelId }: { channelId: string }) {
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Tombol
                     className="min-h-11"
-                    onClick={() => setujuiAnggota(channelId, a.id)}
+                    onClick={() =>
+                      jalankan(() => setujuiAnggota(channelId, a.id))
+                    }
                   >
                     Setujui
                   </Tombol>
                   <Tombol
                     varian="garis"
                     className="min-h-11"
-                    onClick={() =>
-                      setKonfirmasi({ anggota: a, aksi: "tolak" })
-                    }
+                    onClick={() => setKonfirmasi({ anggota: a, aksi: "tolak" })}
                   >
                     Tolak
                   </Tombol>
@@ -135,7 +157,8 @@ export function DaftarAnggota({ channelId }: { channelId: string }) {
         onTutup={() => setKonfirmasi(null)}
         onYa={() => {
           if (!konfirmasi) return;
-          hapusAnggota(channelId, konfirmasi.anggota.id);
+          const id = konfirmasi.anggota.id;
+          jalankan(() => hapusAnggota(channelId, id));
           setKonfirmasi(null);
         }}
       />
