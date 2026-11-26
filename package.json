@@ -9,7 +9,6 @@
     "lint": "eslint",
     "test:kalimat": "tsx src/lib/kalimat.test.ts",
     "test:akun": "tsx src/lib/akun.test.ts",
-    "test:profil": "tsx src/lib/toko-profil.test.ts",
     "prepare": "husky"
   },
   "lint-staged": {

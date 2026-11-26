@@ -1,4 +1,4 @@
-import { WASTE_CATEGORIES, addressById, slotById } from "./mock";
+import { WASTE_CATEGORIES } from "./mock";
 import { rupiah, tanggalPenuh } from "./tanggal";
 import type {
   Invoice,
@@ -42,8 +42,8 @@ export const urutkanHari = (hari: Weekday[]) =>
  * Bagian hari dari jam mulai. Warga bilang "pagi", bukan "06.00–08.00" —
  * jamnya tetap ditampilkan di sebelahnya untuk yang butuh persisnya.
  */
-export function bagianHari(slotId: string): string {
-  const jam = Number(slotById(slotId)?.range.slice(0, 2) ?? 0);
+export function bagianHari(rentang = ""): string {
+  const jam = Number(rentang.slice(0, 2));
   if (jam < 11) return "pagi";
   if (jam < 15) return "siang";
   if (jam < 17) return "sore";
@@ -59,7 +59,7 @@ export const namaJenis = (xs: WasteKey[]) =>
  */
 export function kalimatRutin(jadwal: RecurringSchedule): string {
   const hari = gabung(urutkanHari(jadwal.days));
-  const alamat = addressById(jadwal.addressId)?.label ?? "alamatmu";
+  const alamat = jadwal.address.label || "alamatmu";
 
   if (jadwal.days.length === 0) return "Belum ada hari yang dipilih.";
 
@@ -67,12 +67,12 @@ export function kalimatRutin(jadwal: RecurringSchedule): string {
     ? gabung(namaJenis(jadwal.categories))
     : "sampah";
 
-  return `Setiap ${hari} ${bagianHari(jadwal.timeSlotId)}, petugas ambil ${jenis} dari ${alamat}.`;
+  return `Setiap ${hari} ${bagianHari(jadwal.slot?.range)}, petugas ambil ${jenis} dari ${alamat}.`;
 }
 
 /** Baris pendamping yang menyebut jamnya persis, untuk yang butuh pasti. */
 export function jamPersis(jadwal: RecurringSchedule): string {
-  return `Rentang jemput ${slotById(jadwal.timeSlotId)?.range}.`;
+  return `Rentang jemput ${jadwal.slot?.range}.`;
 }
 
 /** "hari ini" / "kemarin" / "9 hari lalu" — umur pengumuman dibaca, bukan dihitung. */
@@ -166,4 +166,11 @@ export function salam(jam: number): string {
   if (jam < 11) return "Selamat pagi";
   if (jam < 15) return "Selamat siang";
   return "Selamat sore";
+}
+
+/** "640 m", "1,9 km" — atau terus terang kalau titiknya belum ditandai. */
+export function jarakTerbaca(meter: number | null) {
+  if (meter === null) return "jarak belum diketahui";
+  if (meter < 1000) return `${Math.round(meter)} m`;
+  return `${(meter / 1000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} km`;
 }

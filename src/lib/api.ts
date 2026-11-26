@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { rakitApp } from "../../server/src/rakit";
 import { createClient } from "./supabase/server";
 
@@ -61,12 +63,17 @@ export async function teruskan(req: Request): Promise<Response> {
 }
 
 /**
- * Baca data API dari Server Component. `null` = belum masuk (401) atau
- * tidak ada (404); galat lain dilempar supaya muncul di error boundary.
+ * Baca data API dari Server Component. Belum masuk (401) → ke /masuk;
+ * `null` = tidak ada (404) atau bukan haknya (403, mis. bukan anggota
+ * channel); galat lain dilempar ke error boundary.
  */
 export async function ambil<T>(path: string): Promise<T | null> {
+  /* Data warga selalu per request. Tanpa ini klien Supabase (yang membaca
+     Date.now() saat dibuat) ikut berjalan di prerender dan Next menolaknya. */
+  await connection();
   const res = await teruskan(new Request(`http://pilah-yuk.internal${path}`));
-  if (res.status === 401 || res.status === 404) return null;
+  if (res.status === 401) redirect("/masuk");
+  if (res.status === 403 || res.status === 404) return null;
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return ((await res.json()) as { data: T }).data;
 }

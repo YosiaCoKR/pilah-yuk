@@ -26,7 +26,10 @@ export const kolomBaris = {
   notes: pickups.notes,
   alamatLabel: addresses.label,
   alamatLengkap: addresses.fullAddress,
+  alamatPatokan: addresses.landmark,
   channelName: rwChannels.name,
+  /* Lahir dari jadwal rutin, bukan dipesan satu-satu. */
+  rutin: sql<boolean>`${pickups.recurringScheduleId} is not null`,
   /* Kategori digabung di SQL — menghindari satu query per pesanan. */
   jenis: sql<string[]>`coalesce(
     array_agg(${wasteCategories.slug}) filter (

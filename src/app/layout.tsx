@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { Memuat } from "@/components/memuat";
 import type { Metadata, Viewport } from "next";
 import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
@@ -36,7 +38,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="id"
       className={`${jakarta.variable} ${archivo.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-paper text-ink">{children}</body>
+      <body className="min-h-full bg-paper text-ink">
+        {/* Halaman yang membaca sesi (cookie) menunggu di balik batas ini. */}
+        <Suspense fallback={<Memuat />}>{children}</Suspense>
+      </body>
     </html>
   );
 }

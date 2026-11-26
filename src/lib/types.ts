@@ -48,12 +48,19 @@ export type TimeSlot = {
 
 export type PickupStatus = "menunggu" | "dijemput" | "selesai" | "batal";
 
+/** Alamat seperti yang terbawa di pesanan — cukup untuk ditampilkan. */
+export type AlamatRingkas = Pick<
+  Address,
+  "label" | "fullAddress" | "landmark" | "rwChannelName"
+>;
+
 export type Pickup = {
   id: string;
   code: string;
-  addressId: string;
+  address: AlamatRingkas;
   pickupDate: string; // ISO date
-  timeSlotId: string;
+  /** Kosong bila slotnya sudah dihapus pengurus. */
+  slot?: Pick<TimeSlot, "range">;
   categories: WasteKey[];
   status: PickupStatus;
   totalWeightKg?: number;
@@ -75,6 +82,7 @@ export type SubscriptionStatus = "aktif" | "kedaluwarsa" | "menunggu_bayar";
 
 export type Subscription = {
   id: string;
+  planId: string;
   planName: string;
   billingCycle: "mingguan" | "bulanan";
   status: SubscriptionStatus;
@@ -131,6 +139,9 @@ export type Weekday =
 export type RecurringSchedule = {
   id: string;
   addressId: string;
+  address: AlamatRingkas;
+  /** Kosong selama form belum memilih jam. */
+  slot?: Pick<TimeSlot, "range">;
   days: Weekday[];
   timeSlotId: string;
   startDate: string;
@@ -151,12 +162,15 @@ export type Channel = {
   areaCode: string;
   scheduleInfo: string;
   memberCount: number;
-  /** Jarak perkiraan dari alamat utama warga, dalam meter. */
-  distanceM: number;
+  /** Jarak perkiraan dari alamat utama warga, dalam meter. Null bila titik
+      alamat atau channel belum ditandai. */
+  distanceM: number | null;
   pengurus: string;
   isMember: boolean;
   /** Benar bila warga yang masuk adalah pengurus channel ini. */
   isManager: boolean;
+  /** null = belum pernah mengajukan gabung. */
+  membership: MemberStatus | null;
   /** Pengumuman terbaru, untuk pratinjau di daftar. */
   latestPost?: { author: string; content: string; agoDays: number };
 };
