@@ -12,12 +12,20 @@ export const OPSI_COOKIE = {
   sameSite: "lax",
 } as const;
 
-/** Klien Supabase untuk Server Component / Server Action / Route Handler. */
+/**
+ * Klien Supabase KHUSUS AUTH (simpan/segarkan sesi di cookie) untuk Server
+ * Component dan Route Handler — tidak pernah untuk `.from()`.
+ *
+ * Kuncinya service key, sama seperti `buatSupabaseAuth` di server/src/akun.ts:
+ * proyeknya satu dengan backend, dan kunci ini tidak pernah keluar dari
+ * server (tidak ada klien Supabase di browser). Data warga tetap lewat API
+ * Elysia, yang memeriksa token warga sendiri.
+ */
 export async function createClient() {
   const cookieStore = await cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookieOptions: OPSI_COOKIE,
       cookies: {
