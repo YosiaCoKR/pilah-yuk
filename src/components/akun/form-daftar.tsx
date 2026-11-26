@@ -10,7 +10,7 @@ import {
   type IsiDaftar,
   type Peran,
 } from "@/lib/akun";
-import { HP_TERDAFTAR } from "@/lib/mock";
+import { kirim as kirimApi } from "@/lib/kirim";
 import { Isian, Kartu, KotakGalat } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
 import { IkonCentang } from "../ikon";
@@ -45,26 +45,34 @@ export function FormDaftar() {
   /* Akun baru aktif setelah kode SMS cocok — membuktikan nomornya memang
      milik pendaftar, bukan nomor tetangga yang nanti kebanjiran pengingat. */
   const [tungguKode, setTungguKode] = useState(false);
-  const galat = dicoba ? periksaPendaftaran(isi, HP_TERDAFTAR) : {};
+  /* Nomor terdaftar diperiksa server (409), bukan daftar di perangkat. */
+  const galat = dicoba ? periksaPendaftaran(isi, []) : {};
+  const [mengirim, setMengirim] = useState(false);
 
   const ubah = (k: keyof IsiDaftar) => (v: string) => {
     setIsi((x) => ({ ...x, [k]: v }));
     setGalatForm(null);
   };
 
-  function kirim(e: React.FormEvent) {
+  const badan = () => ({
+    ...isi,
+    nama: isi.nama.trim(),
+    hp: normalkanHp(isi.hp),
+  });
+
+  async function kirim(e: React.FormEvent) {
     e.preventDefault();
     setDicoba(true);
-    const g = periksaPendaftaran(isi, HP_TERDAFTAR);
+    const g = periksaPendaftaran(isi, []);
     if (Object.keys(g).length) {
       document.getElementById(`${id}-${Object.keys(g)[0]}`)?.focus();
       return;
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
-    /* ponytail: belum memanggil POST /api/akun/daftar — kode 6 angka apa pun
-       diterima di data tiruan. Saat disambungkan ke API, langkah kode
-       mengirim ULANG nama, sandi, dan peran bersama kodenya: server baru
-       memasang sandi setelah nomornya terbukti. */
+    setMengirim(true);
+    const h = await kirimApi("POST", "/api/akun/daftar", badan());
+    setMengirim(false);
+    if (!h.ok) return setGalatForm(Object.values(h.rincian)[0] ?? h.pesan);
     setTungguKode(true);
   }
 
@@ -73,7 +81,17 @@ export function FormDaftar() {
     return (
       <LangkahKode
         hp={normalkanHp(isi.hp)}
-        onCocok={() => setAkun({ nama: isi.nama.trim(), peran: isi.peran })}
+        /* Langkah kode mengirim ULANG nama, sandi, dan peran bersama kodenya:
+           server baru memasang sandi setelah nomornya terbukti. */
+        verifikasi={async (kode) => {
+          const h = await kirimApi("POST", "/api/akun/daftar/verifikasi", {
+            ...badan(),
+            kode,
+          });
+          if (!h.ok) return h.rincian.kode ?? h.pesan;
+          setAkun({ nama: isi.nama.trim(), peran: isi.peran });
+          return null;
+        }}
         onUlang={() => setTungguKode(false)}
       />
     );
@@ -149,8 +167,8 @@ export function FormDaftar() {
         </div>
       </fieldset>
 
-      <Tombol type="submit" lebar className="mt-1">
-        Daftar
+      <Tombol type="submit" lebar className="mt-1" disabled={mengirim}>
+        {mengirim ? "Mengirim kode…" : "Daftar"}
       </Tombol>
 
       <p className="text-center text-[13px] text-ink-2">
@@ -166,11 +184,12 @@ export function FormDaftar() {
 
 function LangkahKode({
   hp,
-  onCocok,
+  verifikasi,
   onUlang,
 }: {
   hp: string;
-  onCocok: () => void;
+  /** `null` = cocok; selain itu pesan galat untuk ditampilkan. */
+  verifikasi: (kode: string) => Promise<string | null>;
   onUlang: () => void;
 }) {
   const id = useId();
@@ -178,8 +197,9 @@ function LangkahKode({
   const [dicoba, setDicoba] = useState(false);
   const [galatForm, setGalatForm] = useState<string | null>(null);
   const galat = dicoba ? periksaKode(kode) : undefined;
+  const [mengirim, setMengirim] = useState(false);
 
-  function kirim(e: React.FormEvent) {
+  async function kirim(e: React.FormEvent) {
     e.preventDefault();
     setDicoba(true);
     if (periksaKode(kode)) {
@@ -187,7 +207,10 @@ function LangkahKode({
       return;
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
-    onCocok();
+    setMengirim(true);
+    const galat = await verifikasi(kode.replace(/\s/g, ""));
+    setMengirim(false);
+    if (galat) setGalatForm(galat);
   }
 
   return (
@@ -218,8 +241,8 @@ function LangkahKode({
         galat={galat}
       />
 
-      <Tombol type="submit" lebar className="mt-1">
-        Aktifkan akun
+      <Tombol type="submit" lebar className="mt-1" disabled={mengirim}>
+        {mengirim ? "Memeriksa…" : "Aktifkan akun"}
       </Tombol>
 
       <p className="text-center text-[13px] text-ink-2">

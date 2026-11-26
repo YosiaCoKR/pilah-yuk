@@ -5,12 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   GALAT_JARINGAN,
-  GALAT_MASUK,
   normalkanHp,
   periksaMasuk,
   type IsiMasuk,
 } from "@/lib/akun";
-import { HP_TERDAFTAR, SANDI_TIRUAN } from "@/lib/mock";
+import { kirim as kirimApi } from "@/lib/kirim";
 import { Isian, KotakGalat } from "../primitif";
 import { Tombol } from "../tombol";
 
@@ -31,7 +30,9 @@ export function FormMasuk() {
     setGalatForm(null);
   };
 
-  function kirim(e: React.FormEvent) {
+  const [mengirim, setMengirim] = useState(false);
+
+  async function kirim(e: React.FormEvent) {
     e.preventDefault();
     setDicoba(true);
     const g = periksaMasuk(isi);
@@ -40,12 +41,15 @@ export function FormMasuk() {
       return;
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
-    /* ponytail: sesi cuma hidup di state layar ini, dicocokkan ke akun
-       tiruan. Ganti dengan panggilan masuk sungguhan saat task backend Fase 4
-       — jawabannya tetap satu pesan gabungan untuk nomor ATAU sandi salah. */
-    const cocok =
-      HP_TERDAFTAR.includes(normalkanHp(isi.hp)) && isi.sandi === SANDI_TIRUAN;
-    if (!cocok) return setGalatForm(GALAT_MASUK);
+    setMengirim(true);
+    /* Server menjawab satu pesan gabungan untuk nomor ATAU sandi salah, dan
+       memasang cookie sesi kalau cocok (src/lib/api.ts). */
+    const h = await kirimApi("POST", "/api/akun/masuk", {
+      hp: normalkanHp(isi.hp),
+      sandi: isi.sandi,
+    });
+    setMengirim(false);
+    if (!h.ok) return setGalatForm(h.pesan);
     /* Langsung ke beranda — tidak ada kartu "berhasil" yang harus ditutup
        dulu. `replace` supaya tombol kembali tidak membuka layar masuk lagi. */
     router.replace("/");
@@ -84,8 +88,8 @@ export function FormMasuk() {
         </Link>
       </p>
 
-      <Tombol type="submit" lebar className="mt-1">
-        Masuk
+      <Tombol type="submit" lebar className="mt-1" disabled={mengirim}>
+        {mengirim ? "Memeriksa…" : "Masuk"}
       </Tombol>
 
       <p className="text-center text-[13px] text-ink-2">

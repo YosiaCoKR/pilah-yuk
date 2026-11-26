@@ -8,6 +8,7 @@ import {
   periksaLupa,
   type IsiAturUlang,
 } from "@/lib/akun";
+import { kirim } from "@/lib/kirim";
 import { Isian, Kartu, KotakGalat } from "../primitif";
 import { Tombol, TombolLink } from "../tombol";
 import { IkonCentang } from "../ikon";
@@ -28,6 +29,7 @@ export function FormLupaSandi() {
   const [dicoba, setDicoba] = useState(false);
   const [galatForm, setGalatForm] = useState<string | null>(null);
 
+  const [mengirim, setMengirim] = useState(false);
   const galatHp = dicoba && !terkirim ? periksaLupa(hp) : undefined;
   const galat = dicoba && terkirim ? periksaAturUlang(isi) : {};
 
@@ -36,7 +38,7 @@ export function FormLupaSandi() {
     setGalatForm(null);
   };
 
-  function kirimKode(e: React.FormEvent) {
+  async function kirimKode(e: React.FormEvent) {
     e.preventDefault();
     setDicoba(true);
     if (periksaLupa(hp)) {
@@ -44,13 +46,18 @@ export function FormLupaSandi() {
       return;
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
-    /* ponytail: belum ada SMS sungguhan — kode 6 angka apa pun diterima di
-       data tiruan. Ganti dengan permintaan OTP saat task backend Fase 4. */
+    /* Server menjawab sama untuk nomor terdaftar maupun tidak (202). */
+    setMengirim(true);
+    const h = await kirim("POST", "/api/akun/lupa-sandi", {
+      hp: normalkanHp(hp),
+    });
+    setMengirim(false);
+    if (!h.ok) return setGalatForm(h.pesan);
     setTerkirim(normalkanHp(hp));
     setDicoba(false);
   }
 
-  function aturUlang(e: React.FormEvent) {
+  async function aturUlang(e: React.FormEvent) {
     e.preventDefault();
     setDicoba(true);
     const g = periksaAturUlang(isi);
@@ -59,6 +66,14 @@ export function FormLupaSandi() {
       return;
     }
     if (!navigator.onLine) return setGalatForm(GALAT_JARINGAN);
+    setMengirim(true);
+    const h = await kirim("POST", "/api/akun/lupa-sandi/atur-ulang", {
+      hp: terkirim,
+      kode: isi.kode.replace(/\s/g, ""),
+      sandi: isi.sandi,
+    });
+    setMengirim(false);
+    if (!h.ok) return setGalatForm(h.rincian.kode ?? h.pesan);
     setSelesai(true);
   }
 
@@ -93,7 +108,7 @@ export function FormLupaSandi() {
           autoComplete="tel"
           galat={galatHp}
         />
-        <Tombol type="submit" lebar className="mt-1">
+        <Tombol type="submit" lebar className="mt-1" disabled={mengirim}>
           Kirim kode
         </Tombol>
       </form>
@@ -150,7 +165,7 @@ export function FormLupaSandi() {
         galat={galat.ulang}
       />
 
-      <Tombol type="submit" lebar className="mt-1">
+      <Tombol type="submit" lebar className="mt-1" disabled={mengirim}>
         Simpan sandi baru
       </Tombol>
 
