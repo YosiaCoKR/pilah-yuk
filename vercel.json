@@ -1,0 +1,4 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "HUSKY=0 npm ci && npm ci --prefix server"
+}
