@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { OPSI_COOKIE } from "./lib/supabase/server";
 
 /**
  * Menyegarkan sesi Supabase di setiap request halaman: token yang hampir
@@ -13,6 +14,7 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      cookieOptions: OPSI_COOKIE,
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(daftar) {

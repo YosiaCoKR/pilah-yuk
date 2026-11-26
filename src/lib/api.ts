@@ -54,7 +54,8 @@ export async function teruskan(req: Request): Promise<Response> {
     access_token: isi.data.sesi.accessToken,
     refresh_token: isi.data.sesi.refreshToken,
   });
-  /* Sesi sudah di cookie httpOnly; browser tidak perlu melihat tokennya. */
+  /* Sesi sudah di cookie httpOnly (OPSI_COOKIE); browser tidak perlu
+     melihat tokennya. */
   delete (isi.data as Partial<typeof isi.data>).sesi;
   return Response.json(isi, { status: res.status });
 }
