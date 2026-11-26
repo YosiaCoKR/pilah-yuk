@@ -1,0 +1,13 @@
+# Rahasia lokal — env produksi diisi lewat `vercel env`, bukan berkas.
+.env*
+!.env.example
+server/.env*
+!server/.env.example
+# Dibangun ulang / diinstal ulang di Vercel.
+node_modules
+server/node_modules
+.next
+# Alat lokal, bukan bagian aplikasi.
+.claude
+.ngodingpakeai
+.impeccable
