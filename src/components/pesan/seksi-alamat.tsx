@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { IsiAlamat } from "@/lib/toko-profil";
 import type { Address } from "@/lib/types";
 import { IkonCentang, IkonPeta, IkonTambah } from "../ikon";
 import { Lembar } from "../lembar";
@@ -16,7 +17,7 @@ export function SeksiAlamat({
   daftar: Address[];
   terpilih: string | null;
   onPilih: (id: string) => void;
-  onTambah: (alamat: Omit<Address, "id">) => void;
+  onTambah: (alamat: IsiAlamat) => void;
 }) {
   const [bukaForm, setBukaForm] = useState(false);
   const aktifItem = daftar.find((a) => a.id === terpilih);

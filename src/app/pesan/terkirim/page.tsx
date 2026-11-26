@@ -3,14 +3,11 @@ import { IkonCentang } from "@/components/ikon";
 import { LiniStatus } from "@/components/lini-status";
 import { ChipSampah, Kartu, Label, Perforasi } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
-import { addressById, slotById } from "@/lib/mock";
+import { notFound } from "next/navigation";
+import { satuPesanan } from "@/lib/data";
 import { hariPanjang, tanggalPendek } from "@/lib/tanggal";
 import { StatusJemput } from "@/components/status-jemput";
-import type { WasteKey } from "@/lib/types";
-
 export const metadata = { title: "Permintaan terkirim — Pilah Yuk" };
-
-const KODE = "PY-4833";
 
 export default function TerkirimPage(props: PageProps<"/pesan/terkirim">) {
   return (
@@ -24,8 +21,8 @@ export default function TerkirimPage(props: PageProps<"/pesan/terkirim">) {
           Permintaan terkirim
         </h1>
         <p className="mt-1 max-w-[30ch] text-[14px] leading-snug text-ink-2">
-          Petugas channel RW sudah menerima pesananmu. Statusnya menunggu
-          sampai petugas berangkat.
+          Petugas channel RW sudah menerima pesananmu. Statusnya menunggu sampai
+          petugas berangkat.
         </p>
       </div>
 
@@ -67,15 +64,15 @@ async function Struk({
 }: {
   cari: PageProps<"/pesan/terkirim">["searchParams"];
 }) {
-  const q = await cari;
-  const satu = (v: string | string[] | undefined) =>
-    Array.isArray(v) ? v[0] : v;
+  const { id } = await cari;
+  const pesanan = typeof id === "string" ? await satuPesanan(id) : null;
+  if (!pesanan) notFound();
 
-  const alamat = addressById(satu(q.alamat));
-  const slot = slotById(satu(q.slot));
-  const tanggal = satu(q.tanggal);
-  const jenis = (satu(q.jenis) ?? "").split(",").filter(Boolean) as WasteKey[];
-  const catatan = satu(q.catatan);
+  const alamat = pesanan.address;
+  const slot = pesanan.slot;
+  const tanggal = pesanan.pickupDate;
+  const jenis = pesanan.categories;
+  const catatan = pesanan.notes;
 
   return (
     <Kartu className="overflow-hidden motion-safe:animate-[terbit_.45s_cubic-bezier(.2,.8,.2,1)_both]">
@@ -83,10 +80,10 @@ async function Struk({
         <div>
           <p className="text-[13px] font-semibold text-ink-2">Kode pesanan</p>
           <p className="angka mt-0.5 text-[26px] font-extrabold leading-tight">
-            {KODE}
+            {pesanan.code}
           </p>
           <span className="mt-1.5 inline-block">
-            <StatusJemput status="menunggu" />
+            <StatusJemput status={pesanan.status} />
           </span>
         </div>
         {tanggal && (

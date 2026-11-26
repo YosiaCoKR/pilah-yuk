@@ -1,8 +1,8 @@
 "use client";
 
+import type { TimeSlot } from "@/lib/types";
 import { useEffect, useRef } from "react";
 import { useNilaiKlien } from "@/lib/klien";
-import { TIME_SLOTS } from "@/lib/mock";
 import {
   hariPendek,
   jarakHari,
@@ -14,8 +14,18 @@ import { IkonJam } from "../ikon";
 import { Label } from "../primitif";
 
 const BULAN = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
 ];
 
 export function SeksiWaktu({
@@ -23,9 +33,12 @@ export function SeksiWaktu({
   slot,
   onTanggal,
   onSlot,
+  daftarSlot,
 }: {
   tanggal: string | null;
   slot: string | null;
+  /** Slot untuk tanggal terpilih, lengkap dengan sisa kuotanya. */
+  daftarSlot: TimeSlot[];
   onTanggal: (iso: string) => void;
   onSlot: (id: string) => void;
 }) {
@@ -39,7 +52,11 @@ export function SeksiWaktu({
   useEffect(() => {
     rail.current
       ?.querySelector('[aria-pressed="true"]')
-      ?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+      ?.scrollIntoView({
+        inline: "center",
+        block: "nearest",
+        behavior: "smooth",
+      });
   }, [tanggal]);
 
   const bulanTampil = tanggal
@@ -116,8 +133,14 @@ export function SeksiWaktu({
         </p>
       )}
 
+      {!tanggal && (
+        <p className="text-[13px] text-ink-2">
+          Pilih tanggal dulu untuk melihat jam yang masih tersedia.
+        </p>
+      )}
+
       <ul className="space-y-2">
-        {TIME_SLOTS.map((s) => {
+        {daftarSlot.map((s) => {
           const aktif = s.id === slot;
           return (
             <li key={s.id}>
@@ -150,8 +173,8 @@ export function SeksiWaktu({
       </ul>
 
       <p className="text-[13px] leading-snug text-ink-3">
-        Petugas datang di rentang jam itu. Siapkan sampah di depan rumah
-        sebelum jam mulai.
+        Petugas datang di rentang jam itu. Siapkan sampah di depan rumah sebelum
+        jam mulai.
       </p>
     </section>
   );
@@ -160,7 +183,9 @@ export function SeksiWaktu({
 /** " · besok" — client-only, since it depends on today. */
 function KapanLagi({ iso }: { iso: string }) {
   const teks = useNilaiKlien(() => jarakHari(iso), null);
-  return teks ? <span className="font-semibold text-hijau"> · {teks}</span> : null;
+  return teks ? (
+    <span className="font-semibold text-hijau"> · {teks}</span>
+  ) : null;
 }
 
 /** Stable empty snapshot for the prerendered rail. */

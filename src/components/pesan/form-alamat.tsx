@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import type { IsiAlamat } from "@/lib/toko-profil";
 import type { Address } from "@/lib/types";
 import { Isian } from "../primitif";
 import { Tombol } from "../tombol";
@@ -37,7 +38,7 @@ export function FormAlamat({
   onBatal,
   awal,
 }: {
-  onSimpan: (a: Omit<Address, "id">) => void;
+  onSimpan: (a: IsiAlamat) => void;
   onBatal: () => void;
   /** Diisi saat mengubah alamat yang sudah tersimpan. */
   awal?: Address;
@@ -69,7 +70,6 @@ export function FormAlamat({
       label: isi.label.trim(),
       fullAddress: isi.fullAddress.trim(),
       landmark: isi.landmark.trim(),
-      rwChannelName: awal?.rwChannelName ?? "RW 05 Sukamaju",
       isDefault: utama,
     });
   }

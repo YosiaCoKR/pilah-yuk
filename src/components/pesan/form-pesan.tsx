@@ -1,10 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { slotById } from "@/lib/mock";
-import { simpanAlamat, useProfil } from "@/lib/toko-profil";
-import type { DraftOrder } from "@/lib/types";
+import { useEffect, useState } from "react";
+import { kirim as kirimApi } from "@/lib/kirim";
+import { simpanAlamat } from "@/lib/toko-profil";
+import type { Address, DraftOrder, Subscription, TimeSlot } from "@/lib/types";
 import { GerbangLangganan } from "../gerbang-langganan";
 import { PengingatLangganan } from "../pengingat-langganan";
 import { Label } from "../primitif";
@@ -20,11 +20,18 @@ type Bagian = "alamat" | "jenis" | "waktu";
  * One scrolling form rather than a four-step wizard: warga can see the whole
  * order at once and fix any part without walking back through screens.
  */
-export function FormPesan() {
+export function FormPesan({
+  alamat: alamatAwal,
+  langganan,
+}: {
+  alamat: Address[];
+  langganan: Subscription | null;
+}) {
   const router = useRouter();
-  /* Alamat dari toko profil: yang ditambah atau dijadikan utama di sini
-     langsung sama dengan yang terlihat di halaman Profil. */
-  const { alamat: daftarAlamat } = useProfil();
+  /* Alamat yang ditambah di sini tersimpan ke profil lewat API. */
+  const [daftarAlamat, setDaftarAlamat] = useState(alamatAwal);
+  const [daftarSlot, setDaftarSlot] = useState<TimeSlot[]>([]);
+  const [galat, setGalat] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftOrder>({
     addressId: daftarAlamat.find((a) => a.isDefault)?.id ?? null,
     categories: [],
@@ -35,7 +42,29 @@ export function FormPesan() {
   const [mengirim, setMengirim] = useState(false);
 
   const alamat = daftarAlamat.find((a) => a.id === draft.addressId);
-  const slot = slotById(draft.timeSlotId);
+  const slot = daftarSlot.find((s) => s.id === draft.timeSlotId);
+
+  /* Kuota tiap jam berbeda per tanggal: dibaca ulang setiap tanggal ganti. */
+  useEffect(() => {
+    if (!draft.date) return;
+    let batal = false;
+    kirimApi<TimeSlot[]>("GET", `/api/slot-waktu?tanggal=${draft.date}`).then(
+      (h) => {
+        if (batal) return;
+        if (!h.ok) return setGalat(h.pesan);
+        setDaftarSlot(h.data);
+        /* Jam yang tadi dipilih bisa penuh di tanggal baru. */
+        setDraft((d) =>
+          h.data.some((s) => s.id === d.timeSlotId && !s.full)
+            ? d
+            : { ...d, timeSlotId: null },
+        );
+      },
+    );
+    return () => {
+      batal = true;
+    };
+  }, [draft.date]);
 
   const kurang = [
     !draft.addressId && "alamat",
@@ -51,33 +80,48 @@ export function FormPesan() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function kirim() {
+  async function kirim() {
     if (!lengkap || mengirim) return;
     setMengirim(true);
-    const q = new URLSearchParams({
-      alamat: draft.addressId ?? "",
-      jenis: draft.categories.join(","),
-      tanggal: draft.date ?? "",
-      slot: draft.timeSlotId ?? "",
-      catatan: draft.notes.trim(),
+    setGalat(null);
+    const h = await kirimApi<{ id: string }>("POST", "/api/pesanan", {
+      addressId: draft.addressId,
+      jenis: draft.categories,
+      tanggal: draft.date,
+      timeSlotId: draft.timeSlotId,
+      catatan: draft.notes.trim() || undefined,
     });
-    router.push(`/pesan/terkirim?${q}`);
+    if (!h.ok) {
+      setMengirim(false);
+      return setGalat(Object.values(h.rincian)[0] ?? h.pesan);
+    }
+    router.push(`/pesan/terkirim?id=${h.data.id}`);
   }
 
   return (
     <>
       <div className="space-y-7 px-4 pb-44 pt-5">
-        <PengingatLangganan ringkas />
+        <PengingatLangganan langganan={langganan} ringkas />
 
         <div id="bagian-alamat" className="scroll-mt-20">
           <SeksiAlamat
             daftar={daftarAlamat}
             terpilih={draft.addressId}
             onPilih={(addressId) => setDraft((d) => ({ ...d, addressId }))}
-            onTambah={(baru) => {
-              const id = `addr-${Date.now()}`;
-              simpanAlamat({ ...baru, id });
-              setDraft((d) => ({ ...d, addressId: id }));
+            onTambah={async (baru) => {
+              const h = await simpanAlamat(baru);
+              if (!h.ok) return setGalat(h.pesan);
+              setDaftarAlamat((xs) => [
+                ...xs.map((a) =>
+                  baru.isDefault ? { ...a, isDefault: false } : a,
+                ),
+                {
+                  ...h.data,
+                  landmark: h.data.landmark ?? "",
+                  rwChannelName: "",
+                },
+              ]);
+              setDraft((d) => ({ ...d, addressId: h.data.id }));
             }}
           />
         </div>
@@ -95,6 +139,7 @@ export function FormPesan() {
             slot={draft.timeSlotId}
             onTanggal={(date) => setDraft((d) => ({ ...d, date }))}
             onSlot={(timeSlotId) => setDraft((d) => ({ ...d, timeSlotId }))}
+            daftarSlot={draft.date ? daftarSlot : []}
           />
         </div>
 
@@ -125,7 +170,12 @@ export function FormPesan() {
         <div className="mx-auto max-w-screen-sm">
           {/* Gerbangnya di atas tombol, bukan di dalam `kirim` — warga tahu
               sejak awal kalau pesanannya tidak akan bisa dikirim. */}
-          <GerbangLangganan>
+          <GerbangLangganan langganan={langganan}>
+            {galat && (
+              <p role="alert" className="mb-2 text-[13px] text-alarm">
+                {galat}
+              </p>
+            )}
             {!lengkap && (
               <p className="mb-2 text-[13px] text-ink-2">
                 Masih perlu: {kurang.join(", ")}.
