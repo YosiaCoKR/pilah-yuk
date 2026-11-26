@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { CHANNELS, cariFaq } from "@/lib/mock";
+import { cariFaq } from "@/lib/mock";
+import type { Channel } from "@/lib/types";
 import { IkonCari, IkonLanjut, IkonTutup } from "../ikon";
 import { Kartu, Label } from "../primitif";
 import { TombolLink } from "../tombol";
@@ -11,8 +12,15 @@ import { TombolLink } from "../tombol";
  * sendiri — di sana pengurusnya membaca. Belum punya channel → gabung dulu,
  * karena tanpa channel memang tidak ada pengurus yang bisa ditanya.
  */
-function KartuKontak({ kata }: { kata?: string }) {
-  const channel = CHANNELS.find((c) => c.isMember);
+type ChannelKontak = Pick<Channel, "id" | "name" | "pengurus"> | null;
+
+function KartuKontak({
+  kata,
+  channel,
+}: {
+  kata?: string;
+  channel: ChannelKontak;
+}) {
   return (
     <Kartu className="p-4">
       <p className="text-[15px] font-semibold">
@@ -41,7 +49,7 @@ function KartuKontak({ kata }: { kata?: string }) {
   );
 }
 
-export function DaftarFaq() {
+export function DaftarFaq({ channel }: { channel: ChannelKontak }) {
   const [cari, setCari] = useState("");
   const kata = cari.trim();
   const hasil = cariFaq(kata);
@@ -77,7 +85,9 @@ export function DaftarFaq() {
 
       {/* Kosong → jalan keluarnya naik ke atas, bukan disuruh menggulir
           mencari kartu kontak di dasar halaman. */}
-      {kata && hasil.length === 0 && <KartuKontak kata={kata} />}
+      {kata && hasil.length === 0 && (
+        <KartuKontak kata={kata} channel={channel} />
+      )}
 
       {topik.map((t) => (
         <section key={t} className="space-y-3">
@@ -108,7 +118,7 @@ export function DaftarFaq() {
         </section>
       ))}
 
-      {hasil.length > 0 && <KartuKontak />}
+      {hasil.length > 0 && <KartuKontak channel={channel} />}
     </div>
   );
 }

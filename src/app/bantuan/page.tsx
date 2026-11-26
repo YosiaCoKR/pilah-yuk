@@ -1,9 +1,11 @@
 import { DaftarFaq } from "@/components/bantuan/daftar-faq";
 import { Kop } from "@/components/kop";
+import { daftarChannel } from "@/lib/data";
 
 export const metadata = { title: "Pusat bantuan — Pilah Yuk" };
 
-export default function BantuanPage() {
+export default async function BantuanPage() {
+  const channel = (await daftarChannel()).find((c) => c.isMember) ?? null;
   return (
     <>
       <Kop
@@ -12,7 +14,7 @@ export default function BantuanPage() {
         kembali="/profil"
       />
       <main className="space-y-7 px-4 pb-10 pt-5">
-        <DaftarFaq />
+        <DaftarFaq channel={channel} />
       </main>
     </>
   );

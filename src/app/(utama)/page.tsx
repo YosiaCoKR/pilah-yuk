@@ -12,7 +12,13 @@ import { PengingatLangganan } from "@/components/pengingat-langganan";
 import { Kartu, Label } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
 import { PermintaanGabung, Salam } from "@/components/sapaan";
-import { CHANNELS, PENGGUNA, PICKUPS } from "@/lib/mock";
+import {
+  akunku,
+  daftarChannel,
+  langgananku,
+  pesananMendatang,
+  satuChannel,
+} from "@/lib/data";
 
 const PINTASAN = [
   { href: "/jadwal", label: "Jadwal rutin", Ikon: IkonJadwal },
@@ -21,16 +27,26 @@ const PINTASAN = [
   { href: "/panduan", label: "Panduan pilah", Ikon: IkonPanduan },
 ];
 
-export default function Beranda() {
-  const berikutnya = PICKUPS.find((p) => p.status !== "selesai");
-  const channelku = CHANNELS.find((c) => c.isMember);
+export default async function Beranda() {
+  const [akun, mendatang, channel, langganan] = await Promise.all([
+    akunku(),
+    pesananMendatang(),
+    daftarChannel(),
+    langgananku(),
+  ]);
+  const berikutnya = mendatang[0];
+  const channelku = channel.find((c) => c.isMember);
+  /* Jumlah permintaan gabung hanya dibaca untuk pengurus. */
+  const menunggu = channelku?.isManager
+    ? ((await satuChannel(channelku.id))?.menunggu ?? 0)
+    : 0;
 
   return (
     <main className="space-y-7">
       <header className="flex items-center justify-between gap-3">
         <div>
           <Salam />
-          <p className="text-[19px] font-bold leading-tight">{PENGGUNA.nama}</p>
+          <p className="text-[19px] font-bold leading-tight">{akun.nama}</p>
         </div>
         <Link
           href="/notifikasi"
@@ -38,10 +54,6 @@ export default function Beranda() {
           className="relative grid size-11 place-items-center rounded-kartu border border-line bg-card text-ink-2"
         >
           <IkonLonceng className="size-5" />
-          <span
-            aria-hidden
-            className="absolute right-2.5 top-2.5 size-2 rounded-full bg-alarm"
-          />
         </Link>
       </header>
 
@@ -58,9 +70,11 @@ export default function Beranda() {
         </Kartu>
       )}
 
-      {channelku?.isManager && <PermintaanGabung channelId={channelku.id} />}
+      {channelku?.isManager && (
+        <PermintaanGabung channelId={channelku.id} n={menunggu} />
+      )}
 
-      <PengingatLangganan />
+      <PengingatLangganan langganan={langganan} />
 
       <TombolLink href="/pesan" lebar className="min-h-14 text-[16px]">
         Pesan jemput sampah
