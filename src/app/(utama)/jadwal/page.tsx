@@ -3,16 +3,18 @@ import { BarisJadwal } from "@/components/baris-jadwal";
 import { KartuRutin } from "@/components/kartu-rutin";
 import { Kartu, Label } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
-import { PICKUPS } from "@/lib/mock";
+import { akunku, jadwalRutin, pesananMendatang } from "@/lib/data";
 import { bulanTahun } from "@/lib/tanggal";
 
 export const metadata = { title: "Jadwal — Pilah Yuk" };
 
-export default function JadwalPage() {
-  /* Jadwal mendatang = yang belum selesai, diurut dari yang paling dekat. */
-  const mendatang = PICKUPS.filter(
-    (p) => p.status === "menunggu" || p.status === "dijemput",
-  ).sort((a, b) => a.pickupDate.localeCompare(b.pickupDate));
+export default async function JadwalPage() {
+  /* Mendatang = menunggu/dijemput, terdekat dulu — disaring & diurut API. */
+  const [mendatang, rutin, akun] = await Promise.all([
+    pesananMendatang(),
+    jadwalRutin(),
+    akunku(),
+  ]);
 
   return (
     <main className="space-y-7">
@@ -23,7 +25,7 @@ export default function JadwalPage() {
         </p>
       </header>
 
-      <KartuRutin />
+      <KartuRutin jadwal={rutin} nomor={akun.hp} />
 
       <section className="space-y-3">
         <Label

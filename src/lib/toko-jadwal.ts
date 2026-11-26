@@ -1,45 +1,37 @@
-"use client";
-
-import { useSyncExternalStore } from "react";
-import { RECURRING } from "./mock";
+import { kirim } from "./kirim";
 import type { RecurringSchedule } from "./types";
 
 /**
- * Keadaan jadwal rutin selama satu sesi.
- *
- * Menjeda jadwal harus terlihat di layar lain juga — kartu di halaman jadwal
- * ikut berubah begitu aksinya dijalankan. Tanpa backend, keadaannya disimpan
- * di modul ini dan disiarkan lewat useSyncExternalStore. Hilang saat halaman
- * dimuat ulang, dan itu memang yang diharapkan dari data tiruan.
- *
- * Saat API-nya siap, berkas ini ditukar dengan panggilan ke `/api/jadwal`
- * tanpa menyentuh komponen yang memakainya.
+ * Aksi jadwal rutin ke API. Keadaan tidak disimpan di sini: setelah aksi,
+ * layar pindah/refresh dan Server Component membaca ulang dari API.
  */
 
-let jadwal: RecurringSchedule = RECURRING;
-const pendengar = new Set<() => void>();
+export type IsiRutin = Pick<
+  RecurringSchedule,
+  "addressId" | "timeSlotId" | "days" | "categories" | "reminderEnabled"
+>;
 
-function langgan(dengar: () => void) {
-  pendengar.add(dengar);
-  return () => pendengar.delete(dengar);
-}
+/** `id` null = jadwal baru. */
+export const simpanJadwal = (id: string | null, isi: IsiRutin) =>
+  kirim(
+    id ? "PUT" : "POST",
+    id ? `/api/jadwal/rutin/${id}` : "/api/jadwal/rutin",
+    {
+      addressId: isi.addressId,
+      timeSlotId: isi.timeSlotId,
+      hari: isi.days,
+      jenis: isi.categories,
+      pengingat: isi.reminderEnabled,
+    },
+  );
 
-/* Referensi objek hanya berubah saat isinya berubah — syarat snapshot yang
-   stabil, kalau tidak React akan merender tanpa henti. */
-const baca = () => jadwal;
-const bacaServer = () => RECURRING;
+export const jedaJadwal = (id: string, sampai: string | null) =>
+  kirim<{ dibatalkan: number }>("PUT", `/api/jadwal/rutin/${id}/jeda`, {
+    sampai,
+  });
 
-export function ubahJadwal(sebagian: Partial<RecurringSchedule>) {
-  jadwal = { ...jadwal, ...sebagian };
-  for (const dengar of pendengar) dengar();
-}
+export const jalankanJadwal = (id: string) =>
+  kirim("PUT", `/api/jadwal/rutin/${id}/jalan`);
 
-export const jedaJadwal = (sampai: string | null) =>
-  ubahJadwal({ isPaused: true, pausedUntil: sampai });
-
-export const jalankanJadwal = () =>
-  ubahJadwal({ isPaused: false, pausedUntil: null });
-
-export function useJadwal(): RecurringSchedule {
-  return useSyncExternalStore(langgan, baca, bacaServer);
-}
+export const aturPengingat = (id: string, aktif: boolean) =>
+  kirim("PUT", `/api/jadwal/rutin/${id}/pengingat`, { aktif });

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { addressById, slotById } from "@/lib/mock";
 import { bulanPendekDari, hariPendek, parseISO } from "@/lib/tanggal";
 import { StatusJemput } from "./status-jemput";
 import type { Pickup } from "@/lib/types";
@@ -19,8 +18,8 @@ export function BarisJadwal({
   pickup: Pickup;
   tampilkanJarak?: boolean;
 }) {
-  const alamat = addressById(pickup.addressId);
-  const slot = slotById(pickup.timeSlotId);
+  const alamat = pickup.address;
+  const slot = pickup.slot;
   const d = parseISO(pickup.pickupDate);
 
   return (

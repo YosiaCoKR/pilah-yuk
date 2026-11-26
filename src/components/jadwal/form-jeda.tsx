@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { useNilaiKlien } from "@/lib/klien";
 import { kalimatRutin } from "@/lib/kalimat";
-import { PICKUPS } from "@/lib/mock";
 import {
   geserHari,
   hariIniISO,
@@ -12,7 +11,8 @@ import {
   tanggalPanjang,
   tanggalPendek,
 } from "@/lib/tanggal";
-import { jalankanJadwal, jedaJadwal, useJadwal } from "@/lib/toko-jadwal";
+import { jalankanJadwal, jedaJadwal } from "@/lib/toko-jadwal";
+import type { Pickup, RecurringSchedule } from "@/lib/types";
 import { Kop } from "../kop";
 import { Kartu, Label } from "../primitif";
 import { Tombol } from "../tombol";
@@ -30,8 +30,14 @@ const PRESET: { id: Pilihan; label: string; hari: number | null }[] = [
 const akhirJeda = (mulai: string, hari: number | null) =>
   hari === null ? null : geserHari(mulai, hari);
 
-export function FormJeda() {
-  const jadwal = useJadwal();
+export function FormJeda({
+  jadwal,
+  mendatang,
+}: {
+  jadwal: RecurringSchedule;
+  /** Jemput yang belum lewat — untuk menyebut mana yang ikut batal. */
+  mendatang: Pickup[];
+}) {
   const router = useRouter();
   const [pilihan, setPilihan] = useState<Pilihan>("1-minggu");
   /* useTransition, bukan useState: App Router menyimpan segmen di cache
@@ -55,7 +61,7 @@ export function FormJeda() {
   const terdampak = useMemo(
     () =>
       hariIni
-        ? PICKUPS.filter(
+        ? mendatang.filter(
             (p) =>
               p.status === "menunggu" &&
               p.recurring &&
@@ -63,16 +69,19 @@ export function FormJeda() {
               (sampai === null || p.pickupDate <= sampai),
           )
         : [],
-    [hariIni, sampai],
+    [hariIni, sampai, mendatang],
   );
 
+  const [galat, setGalat] = useState<string | null>(null);
+
   function simpan() {
-    mulaiKirim(() => {
-      /* Perubahan dipakai sekarang juga, jadi kartu di halaman jadwal sudah
-         berubah begitu warga sampai di sana. */
-      if (dijeda) jalankanJadwal();
-      else jedaJadwal(sampai);
+    mulaiKirim(async () => {
+      const h = dijeda
+        ? await jalankanJadwal(jadwal.id)
+        : await jedaJadwal(jadwal.id, sampai);
+      if (!h.ok) return setGalat(h.pesan);
       router.push("/jadwal");
+      router.refresh();
     });
   }
 
@@ -103,6 +112,11 @@ export function FormJeda() {
 
           <div className="fixed inset-x-0 bottom-0 border-t border-line bg-paper/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
             <div className="mx-auto max-w-screen-sm">
+              {galat && (
+                <p role="alert" className="mb-2 text-[13px] text-alarm">
+                  {galat}
+                </p>
+              )}
               <Tombol lebar disabled={kirim} onClick={simpan}>
                 {kirim ? "Menyimpan…" : "Jalankan jadwal lagi"}
               </Tombol>
@@ -201,6 +215,11 @@ export function FormJeda() {
 
         <div className="fixed inset-x-0 bottom-0 border-t border-line bg-paper/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <div className="mx-auto max-w-screen-sm">
+            {galat && (
+              <p role="alert" className="mb-2 text-[13px] text-alarm">
+                {galat}
+              </p>
+            )}
             <Tombol lebar disabled={kirim} onClick={simpan}>
               {kirim ? "Menyimpan…" : "Jeda jadwal rutin"}
             </Tombol>

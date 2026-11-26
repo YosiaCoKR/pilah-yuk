@@ -2,11 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { TIME_SLOTS, WASTE_CATEGORIES, WASTE_COLOR } from "@/lib/mock";
+import { WASTE_CATEGORIES, WASTE_COLOR } from "@/lib/mock";
 import { urutkanHari } from "@/lib/kalimat";
-import { useProfil } from "@/lib/toko-profil";
+import { simpanJadwal } from "@/lib/toko-jadwal";
 import { RingkasanRutin } from "./ringkasan-rutin";
-import type { RecurringSchedule, WasteKey, Weekday } from "@/lib/types";
+import type {
+  Address,
+  RecurringSchedule,
+  Subscription,
+  TimeSlot,
+  WasteKey,
+  Weekday,
+} from "@/lib/types";
 import { GerbangLangganan } from "../gerbang-langganan";
 import { IkonCentang, IkonJam, IkonPeta } from "../ikon";
 import { Label, PenandaUtama } from "../primitif";
@@ -23,14 +30,30 @@ const HARI: { nama: Weekday; pendek: string }[] = [
   { nama: "Minggu", pendek: "Min" },
 ];
 
-export function FormRutin({ awal }: { awal: RecurringSchedule }) {
+export function FormRutin({
+  awal,
+  alamat,
+  slot,
+  langganan,
+}: {
+  /** `null` = warga belum punya jadwal rutin; form membuat yang baru. */
+  awal: RecurringSchedule | null;
+  alamat: Address[];
+  slot: TimeSlot[];
+  langganan: Subscription | null;
+}) {
   const router = useRouter();
-  const [hari, setHari] = useState<Weekday[]>(awal.days);
-  const [slotId, setSlotId] = useState(awal.timeSlotId);
-  const { alamat } = useProfil();
-  const [alamatId, setAlamatId] = useState(awal.addressId);
-  const [jenis, setJenis] = useState<WasteKey[]>(awal.categories);
-  const [pengingat, setPengingat] = useState(awal.reminderEnabled);
+  const [hari, setHari] = useState<Weekday[]>(awal?.days ?? []);
+  const [slotId, setSlotId] = useState(awal?.timeSlotId ?? slot[0]?.id ?? "");
+  const [alamatId, setAlamatId] = useState(
+    awal?.addressId ??
+      alamat.find((a) => a.isDefault)?.id ??
+      alamat[0]?.id ??
+      "",
+  );
+  const [jenis, setJenis] = useState<WasteKey[]>(awal?.categories ?? []);
+  const [pengingat, setPengingat] = useState(awal?.reminderEnabled ?? true);
+  const [galat, setGalat] = useState<string | null>(null);
   /* Lihat catatan di FormJeda: flag useState bisa tertinggal menyala karena
      cache segmen App Router. */
   const [tersimpan, mulaiSimpan] = useTransition();
@@ -48,6 +71,7 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
     });
 
   const kurang = [
+    !alamatId && "alamat (tambah dulu di Profil)",
     hari.length === 0 && "hari",
     jenis.length === 0 && "jenis sampah",
   ].filter(Boolean) as string[];
@@ -57,21 +81,33 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
      "Selasa & Jumat" harus terbaca begitu, bukan "Jumat & Selasa". */
   const hariTerurut = urutkanHari(hari);
   /* Jadwal "seandainya disimpan", dirakit dari keadaan form. */
+  const alamatTerpilih = alamat.find((a) => a.id === alamatId);
   const pratinjau: RecurringSchedule = {
-    ...awal,
+    id: awal?.id ?? "",
+    startDate: awal?.startDate ?? "",
+    endDate: awal?.endDate ?? null,
+    isPaused: awal?.isPaused ?? false,
+    pausedUntil: awal?.pausedUntil ?? null,
     days: hariTerurut,
     timeSlotId: slotId,
+    slot: slot.find((s) => s.id === slotId),
     addressId: alamatId,
+    address: alamatTerpilih ?? {
+      label: "",
+      fullAddress: "",
+      landmark: "",
+      rwChannelName: "",
+    },
     categories: jenis,
     reminderEnabled: pengingat,
   };
 
   function simpan() {
-    mulaiSimpan(() => {
-      /* Belum ada backend, jadi perubahan belum tersimpan ke mana pun.
-         Alurnya sudah final supaya tinggal menukar bagian ini dengan
-         panggilan API. */
+    mulaiSimpan(async () => {
+      const h = await simpanJadwal(awal?.id ?? null, pratinjau);
+      if (!h.ok) return setGalat(Object.values(h.rincian)[0] ?? h.pesan);
       router.push("/jadwal");
+      router.refresh();
     });
   }
 
@@ -109,7 +145,7 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
       <section className="space-y-3">
         <Label>Jam jemput</Label>
         <ul className="space-y-2">
-          {TIME_SLOTS.map((s) => {
+          {slot.map((s) => {
             const aktif = s.id === slotId;
             return (
               <li key={s.id}>
@@ -245,7 +281,12 @@ export function FormRutin({ awal }: { awal: RecurringSchedule }) {
         <div className="mx-auto max-w-screen-sm">
           {/* Jadwal rutin tanpa paket berjalan adalah janji yang tidak akan
               ditepati — petugas tidak punya dasar untuk datang. */}
-          <GerbangLangganan perluKuota={false}>
+          <GerbangLangganan langganan={langganan} perluKuota={false}>
+            {galat && (
+              <p role="alert" className="mb-2 text-[13px] text-alarm">
+                {galat}
+              </p>
+            )}
             {!lengkap && (
               <p className="mb-2 text-[13px] text-ink-2">
                 Masih perlu: {kurang.join(", ")}.

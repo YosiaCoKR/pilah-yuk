@@ -1,9 +1,7 @@
-"use client";
-
 import Link from "next/link";
-import { addressById, slotById } from "@/lib/mock";
 import { tanggalPendek } from "@/lib/tanggal";
-import { useJadwal } from "@/lib/toko-jadwal";
+import type { RecurringSchedule } from "@/lib/types";
+import { TombolLink } from "./tombol";
 import { IkonJadwal } from "./ikon";
 import { RingkasanRutin } from "./jadwal/ringkasan-rutin";
 import { TogglePengingat } from "./jadwal/toggle-pengingat";
@@ -26,10 +24,29 @@ const URUTAN = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
  * kotak dengan hari terpilih ditandai — warga bisa membaca polanya sekali
  * lihat, tanpa menerjemahkan daftar nama hari.
  */
-export function KartuRutin() {
-  const jadwal = useJadwal();
-  const alamat = addressById(jadwal.addressId);
-  const slot = slotById(jadwal.timeSlotId);
+export function KartuRutin({
+  jadwal,
+  nomor,
+}: {
+  jadwal: RecurringSchedule | null;
+  nomor: string;
+}) {
+  if (!jadwal)
+    return (
+      <Kartu className="p-5 text-center">
+        <p className="text-[15px] font-semibold">Belum ada jadwal rutin</p>
+        <p className="mt-1 text-[13px] leading-snug text-ink-2">
+          Pilih hari dan jam sekali, petugas datang sendiri setiap minggu.
+        </p>
+        <div className="mt-4">
+          <TombolLink href="/jadwal/atur" lebar>
+            Atur jadwal rutin
+          </TombolLink>
+        </div>
+      </Kartu>
+    );
+  const alamat = jadwal.address;
+  const slot = jadwal.slot;
   const dijeda = jadwal.isPaused;
 
   return (
@@ -37,9 +54,7 @@ export function KartuRutin() {
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-ink-2">
-              Jadwal rutin
-            </p>
+            <p className="text-[13px] font-semibold text-ink-2">Jadwal rutin</p>
             <p className="angka mt-0.5 text-[20px] font-extrabold leading-tight">
               {slot?.range}
             </p>
@@ -99,8 +114,9 @@ export function KartuRutin() {
 
         <div className="mt-3">
           <TogglePengingat
+            jadwalId={jadwal.id}
             awal={jadwal.reminderEnabled}
-            nomor="0812-3456-7890"
+            nomor={nomor}
           />
         </div>
 

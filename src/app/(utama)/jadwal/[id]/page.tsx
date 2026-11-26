@@ -7,13 +7,9 @@ import { RingkasanRutin } from "@/components/jadwal/ringkasan-rutin";
 import { Kop } from "@/components/kop";
 import { StatusLangsung } from "@/components/riwayat/status-langsung";
 import { ChipSampah, Kartu, Label, Perforasi } from "@/components/primitif";
-import {
-  addressById,
-  categoryByKey,
-  slotById,
-  PICKUPS,
-  RECURRING,
-} from "@/lib/mock";
+import { TombolBatal } from "@/components/jadwal/tombol-batal";
+import { jadwalRutin, satuPesanan } from "@/lib/data";
+import { categoryByKey } from "@/lib/mock";
 import { hariPanjang, tanggalPanjang, tanggalPendek } from "@/lib/tanggal";
 import { StatusJemput } from "@/components/status-jemput";
 
@@ -46,12 +42,12 @@ async function Isi({
   params: PageProps<"/jadwal/[id]">["params"];
 }) {
   const { id } = await params;
-  const pickup = PICKUPS.find((p) => p.id === id);
+  const pickup = await satuPesanan(id);
   if (!pickup) notFound();
 
-  const alamat = addressById(pickup.addressId);
-  const slot = slotById(pickup.timeSlotId);
-  const rutin = pickup.recurring ? RECURRING : null;
+  const alamat = pickup.address;
+  const slot = pickup.slot;
+  const rutin = pickup.recurring ? await jadwalRutin() : null;
 
   return (
     <main className="space-y-7 px-4 pb-10 pt-5">
@@ -98,8 +94,6 @@ async function Isi({
 
           <Baris ikon={<IkonJam className="size-4" />} istilah="Jam">
             <span className="angka font-semibold">{slot?.range}</span>
-            <br />
-            <span className="text-ink-2">{slot?.note}</span>
           </Baris>
 
           <div>
@@ -122,7 +116,7 @@ async function Isi({
 
       <section className="space-y-3">
         <Label>Perjalanan pesanan</Label>
-        <StatusLangsung pickupId={pickup.id} statusAwal={pickup.status} />
+        <StatusLangsung status={pickup.status} />
       </section>
 
       {/* Tips pilah muncul lagi di sini: ini saat warga menyiapkan karung,
@@ -188,12 +182,7 @@ async function Isi({
           >
             Geser jadwal ini
           </Link>
-          <button
-            type="button"
-            className="flex min-h-12 w-full items-center justify-center rounded-kartu border border-alarm/50 bg-card text-[15px] font-semibold text-alarm hover:bg-alarm-tipis"
-          >
-            Batalkan jemput
-          </button>
+          <TombolBatal pickupId={pickup.id} />
           <p className="pt-1 text-center text-[13px] leading-snug text-ink-3">
             Selama statusnya masih menunggu, pesanan bisa digeser atau
             dibatalkan tanpa biaya.

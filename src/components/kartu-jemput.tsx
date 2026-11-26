@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { addressById, slotById } from "@/lib/mock";
 import { hariPanjang, tanggalPendek } from "@/lib/tanggal";
 import { JarakHari } from "./jarak-hari";
 import { StatusJemput } from "./status-jemput";
@@ -12,8 +11,8 @@ import { ChipSampah, Kartu, Perforasi } from "./primitif";
  * is the product's selling point, so it is given the largest type on screen.
  */
 export function KartuJemput({ pickup }: { pickup: Pickup }) {
-  const alamat = addressById(pickup.addressId);
-  const slot = slotById(pickup.timeSlotId);
+  const alamat = pickup.address;
+  const slot = pickup.slot;
 
   return (
     <Kartu className="overflow-hidden">

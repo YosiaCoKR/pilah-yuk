@@ -1,73 +1,52 @@
 "use client";
 
 import { useState } from "react";
+import { aturPengingat } from "@/lib/toko-jadwal";
 import { Sakelar } from "../sakelar";
-
-const WAKTU = [
-  { id: "h-1", label: "Sehari sebelum", jelas: "Malam sebelum petugas datang" },
-  { id: "pagi", label: "Pagi harinya", jelas: "Jam 5 pagi di hari jemput" },
-] as const;
 
 /**
  * Pengingat yang bisa dinyalakan langsung dari kartu jadwal, tanpa masuk ke
  * form. Mengubah pengingat tidak mengubah jadwalnya, jadi tidak pantas
  * menyeret warga melewati seluruh form hanya untuk ini.
+ *
+ * Waktunya tetap: sehari sebelum petugas datang (server/src/pengingat.ts).
  */
 export function TogglePengingat({
+  jadwalId,
   awal,
   nomor,
 }: {
+  jadwalId: string;
   awal: boolean;
   nomor: string;
 }) {
   const [nyala, setNyala] = useState(awal);
-  const [waktu, setWaktu] = useState<string>("h-1");
+  const [galat, setGalat] = useState<string | null>(null);
+
+  async function ubah(baru: boolean) {
+    /* Langsung berubah di layar; dikembalikan kalau server menolak. */
+    setNyala(baru);
+    setGalat(null);
+    const h = await aturPengingat(jadwalId, baru);
+    if (!h.ok) {
+      setNyala(!baru);
+      setGalat(h.pesan);
+    }
+  }
 
   return (
     <div className="space-y-2">
       <Sakelar
         nyala={nyala}
-        onUbah={setNyala}
+        onUbah={ubah}
         judul="Pengingat jemput"
-        keterangan={`Dikirim lewat WhatsApp ke ${nomor}.`}
+        keterangan={`Dikirim sehari sebelumnya ke ${nomor}.`}
         matikanKeterangan="Tidak ada pengingat — kamu perlu ingat sendiri."
       />
-
-      {/* Pilihan waktu hanya berarti kalau pengingatnya menyala. */}
-      {nyala && (
-        <fieldset className="rounded-kartu border border-line bg-card p-3">
-          <legend className="px-1 text-[13px] text-ink-2">
-            Kapan diingatkan
-          </legend>
-          <div className="mt-1 flex gap-2">
-            {WAKTU.map((w) => {
-              const aktif = w.id === waktu;
-              return (
-                <label
-                  key={w.id}
-                  className={`flex min-h-12 flex-1 cursor-pointer flex-col justify-center rounded-kartu border px-3 ${
-                    aktif
-                      ? "border-hijau bg-hijau-tipis"
-                      : "border-line bg-paper hover:border-line-kuat"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="waktu-pengingat"
-                    value={w.id}
-                    checked={aktif}
-                    onChange={() => setWaktu(w.id)}
-                    className="sr-only"
-                  />
-                  <span className="text-[14px] font-semibold">{w.label}</span>
-                  <span className="text-[12px] leading-snug text-ink-2">
-                    {w.jelas}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+      {galat && (
+        <p role="alert" className="text-[13px] text-alarm">
+          {galat}
+        </p>
       )}
     </div>
   );
