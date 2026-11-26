@@ -5,7 +5,7 @@ import { Kop } from "@/components/kop";
 import { Kartu, Label, Perforasi } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
 import { teksKuitansi } from "@/lib/kalimat";
-import { invoiceById } from "@/lib/mock";
+import { satuTagihan } from "@/lib/data";
 import { rupiah, tanggalPendek, tanggalPenuh } from "@/lib/tanggal";
 
 export const metadata = { title: "Detail pembayaran — Pilah Yuk" };
@@ -38,7 +38,7 @@ async function Isi({
   params: PageProps<"/langganan/tagihan/[id]">["params"];
 }) {
   const { id } = await params;
-  const tagihan = invoiceById(id);
+  const tagihan = await satuTagihan(id);
   if (!tagihan) notFound();
 
   const gagal = tagihan.status === "gagal";

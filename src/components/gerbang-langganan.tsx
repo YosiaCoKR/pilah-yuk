@@ -1,8 +1,6 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { tanggalPendek } from "@/lib/tanggal";
-import { useLangganan } from "@/lib/toko-langganan";
+import type { Subscription } from "@/lib/types";
 import { TombolLink } from "./tombol";
 
 /**
@@ -17,16 +15,28 @@ import { TombolLink } from "./tombol";
  * bagi warga: tidak ada jemput yang bisa dipesan sampai periode berikutnya.
  */
 export function GerbangLangganan({
+  langganan,
   children,
   /* Jadwal rutin berlaku untuk periode-periode berikutnya, jadi kuota yang
      habis hari ini tidak membuatnya sia-sia — yang ditahan cuma pesanan
      sekali jalan. */
   perluKuota = true,
 }: {
+  langganan: Subscription | null;
   children: ReactNode;
   perluKuota?: boolean;
 }) {
-  const langganan = useLangganan();
+  if (!langganan)
+    return (
+      <>
+        <p className="mb-2 text-[13px] leading-snug text-ink-2">
+          Pilih paket langganan dulu supaya petugas punya dasar untuk datang.
+        </p>
+        <TombolLink href="/langganan" lebar>
+          Pilih paket
+        </TombolLink>
+      </>
+    );
   const kuotaHabis =
     perluKuota && langganan.pickupQuota - langganan.pickupUsed <= 0;
 

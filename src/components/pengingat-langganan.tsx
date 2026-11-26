@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useNilaiKlien } from "@/lib/klien";
 import { parseISO, rupiah, tanggalPendek } from "@/lib/tanggal";
-import { useLangganan } from "@/lib/toko-langganan";
+import type { Subscription } from "@/lib/types";
 
 /** Whole days from today until `iso`. Negative once it has passed. */
 function sisaHari(iso: string) {
@@ -17,11 +17,43 @@ function sisaHari(iso: string) {
  * needs to: a healthy subscription is a quiet line, an expiring one earns the
  * alarm colour. Says what will happen and by when — never just "expiring".
  */
-export function PengingatLangganan({ ringkas = false }: { ringkas?: boolean }) {
-  /* Dibaca dari toko, bukan diterima sebagai prop: pengingat dan gerbang
-     pemesanan harus menyebut keadaan yang sama persis. Prop membuat halaman
-     server mengirim keadaan awal yang sudah basi begitu warga ganti paket. */
-  const langganan = useLangganan();
+export function PengingatLangganan({
+  langganan,
+  ringkas = false,
+}: {
+  langganan: Subscription | null;
+  ringkas?: boolean;
+}) {
+  if (langganan) return <Isi langganan={langganan} ringkas={ringkas} />;
+  return (
+    <div className="flex items-start gap-3 rounded-kartu border border-alarm/45 bg-alarm-tipis p-3">
+      <span
+        aria-hidden
+        className="mt-1.5 size-2.5 shrink-0 rounded-full bg-alarm"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-semibold">Belum berlangganan</p>
+        <p className="mt-0.5 text-[13px] leading-snug text-ink-2">
+          Pilih paket dulu supaya petugas bisa menjemput.
+        </p>
+      </div>
+      <Link
+        href="/langganan"
+        className="shrink-0 rounded-kartu border border-alarm bg-alarm px-3 py-2 text-[13px] font-semibold text-white"
+      >
+        Pilih paket
+      </Link>
+    </div>
+  );
+}
+
+function Isi({
+  langganan,
+  ringkas,
+}: {
+  langganan: Subscription;
+  ringkas: boolean;
+}) {
   /* Days-remaining depends on today, so it is resolved on the client. */
   const sisa = useNilaiKlien(() => sisaHari(langganan.endDate), null);
   const kuotaSisa = Math.max(0, langganan.pickupQuota - langganan.pickupUsed);
@@ -50,14 +82,13 @@ export function PengingatLangganan({ ringkas = false }: { ringkas?: boolean }) {
         ? sisaKalimat(sisa, kuotaSisa, langganan.endDate)
         : `Berlaku sampai ${tanggalPendek(langganan.endDate)}. Sisa ${kuotaSisa} jemput.`;
 
-  const aksi = habis || belumBayar ? "Perpanjang" : segera ? "Perpanjang" : "Kelola";
+  const aksi =
+    habis || belumBayar ? "Perpanjang" : segera ? "Perpanjang" : "Kelola";
 
   return (
     <div
       className={`flex items-start gap-3 rounded-kartu border p-3 ${
-        mendesak
-          ? "border-alarm/45 bg-alarm-tipis"
-          : "border-line bg-card"
+        mendesak ? "border-alarm/45 bg-alarm-tipis" : "border-line bg-card"
       }`}
     >
       <span
@@ -70,7 +101,10 @@ export function PengingatLangganan({ ringkas = false }: { ringkas?: boolean }) {
         <p className="text-[14px] font-semibold">{judul}</p>
         <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{pesan}</p>
         {!ringkas && langganan.status === "aktif" && (
-          <SisaKuota terpakai={langganan.pickupUsed} kuota={langganan.pickupQuota} />
+          <SisaKuota
+            terpakai={langganan.pickupUsed}
+            kuota={langganan.pickupQuota}
+          />
         )}
       </div>
       <Link
@@ -91,7 +125,8 @@ function sisaKalimat(sisa: number | null, kuotaSisa: number, iso: string) {
   if (kuotaSisa === 0) return "Kuota jemput bulan ini sudah terpakai semua.";
   if (kuotaSisa === 1) return "Tinggal 1 jemput tersisa di paket ini.";
   if (sisa !== null && sisa <= 0) return "Berakhir hari ini.";
-  if (sisa !== null) return `Berakhir ${sisa} hari lagi, ${tanggalPendek(iso)}.`;
+  if (sisa !== null)
+    return `Berakhir ${sisa} hari lagi, ${tanggalPendek(iso)}.`;
   return `Berakhir ${tanggalPendek(iso)}.`;
 }
 

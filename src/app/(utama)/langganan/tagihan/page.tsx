@@ -1,12 +1,13 @@
 import { Kop } from "@/components/kop";
 import { DaftarTagihan } from "@/components/langganan/daftar-tagihan";
 import { Kartu, Label } from "@/components/primitif";
-import { TAGIHAN } from "@/lib/mock";
+import { daftarTagihan } from "@/lib/data";
 import { rupiah } from "@/lib/tanggal";
 
 export const metadata = { title: "Riwayat pembayaran — Pilah Yuk" };
 
-export default function TagihanPage() {
+export default async function TagihanPage() {
+  const TAGIHAN = await daftarTagihan();
   /* Yang benar-benar masuk, bukan seluruh tagihan: percobaan yang gagal tidak
      pernah menjadi uang. */
   const lunas = TAGIHAN.filter((t) => t.status === "lunas");
@@ -21,9 +22,7 @@ export default function TagihanPage() {
       />
       <main className="space-y-7 pb-10 pt-5">
         <Kartu className="p-4">
-          <p className="text-[13px] font-semibold text-ink-2">
-            Total dibayar
-          </p>
+          <p className="text-[13px] font-semibold text-ink-2">Total dibayar</p>
           <p className="angka mt-1 text-[30px] font-extrabold leading-none">
             {rupiah(total)}
           </p>

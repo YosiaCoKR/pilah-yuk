@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { konfirmasiPembayaran } from "@/lib/toko-langganan";
+import { kirim } from "@/lib/kirim";
+import { bayarPaket, type TagihanBaru } from "@/lib/toko-langganan";
 import { iramaJemput, satuanSiklus } from "@/lib/kalimat";
 import { rupiah } from "@/lib/tanggal";
-import type { Plan } from "@/lib/types";
+import type { Invoice, Plan } from "@/lib/types";
 import { IkonCentang } from "../ikon";
 import { Kartu, Label } from "../primitif";
 import { Tombol } from "../tombol";
@@ -39,14 +40,8 @@ const METODE: {
   },
 ];
 
-/* Nomor VA tiruan. Angka depannya kode bank, seperti VA sungguhan — jadi yang
-   tampil di layar punya bentuk yang benar, bukan deretan angka asal. */
-const KODE_BANK: Record<string, string> = {
-  BCA: "8277",
-  Mandiri: "8950",
-  BRI: "2621",
-  BNI: "8808",
-};
+/** Seberapa sering layar menanyakan apakah pembayaran sudah terbaca. */
+const SELANG_MS = 4_000;
 
 export function FormBayar({ paket }: { paket: Plan }) {
   const router = useRouter();
@@ -60,9 +55,28 @@ export function FormBayar({ paket }: { paket: Plan }) {
   /* Tiga tahap, bukan satu tombol "saya sudah bayar": QRIS dan virtual account
      dibayar di aplikasi lain, jadi yang memberi tahu bahwa uangnya masuk
      adalah penyedia pembayaran — bukan warga. */
-  const [tahap, setTahap] = useState<"pilih" | "menunggu" | "diterima">("pilih");
+  const [tahap, setTahap] = useState<"pilih" | "menunggu" | "diterima">(
+    "pilih",
+  );
 
-  const nomorVa = `${KODE_BANK[kanal.va] ?? "8277"} 0812 3456 7890`;
+  const [tagihan, setTagihan] = useState<TagihanBaru | null>(null);
+  const [galat, setGalat] = useState<string | null>(null);
+  const [mengirim, setMengirim] = useState(false);
+  const nomorVa = tagihan?.vaNumber ?? "";
+
+  async function bayar() {
+    setGalat(null);
+    setMengirim(true);
+    const h = await bayarPaket(
+      paket.id,
+      metode === "va" ? "va_bank" : metode,
+      metode === "qris" ? undefined : kanal[metode],
+    );
+    setMengirim(false);
+    if (!h.ok) return setGalat(h.pesan);
+    setTagihan(h.data);
+    setTahap("menunggu");
+  }
 
   async function salinVa() {
     try {
@@ -76,29 +90,35 @@ export function FormBayar({ paket }: { paket: Plan }) {
   }
 
   /*
-    Pembayaran terbaca sendiri.
-
-    Di layar sungguhan bagian ini mendengarkan status dari penyedia pembayaran
-    (webhook → Realtime, atau polling). Di atas data tiruan, jedanya ditiru
-    dengan timer supaya alurnya bisa dicoba utuh — tinggal menukar isi efek ini.
-
-    ponytail: jeda tetap 4,5 detik. Ganti dengan langganan status sungguhan,
-    termasuk jalur gagal & kedaluwarsa, saat API pembayaran siap.
+    Pembayaran terbaca sendiri: webhook Midtrans menandai tagihan, layar ini
+    menanyakannya berkala. Selama belum dibayar API menjawab 404.
+    ponytail: polling 4 detik; ganti Supabase Realtime kalau perlu seketika.
   */
   useEffect(() => {
-    if (tahap !== "menunggu") return;
-    const t = setTimeout(() => {
-      konfirmasiPembayaran();
-      setTahap("diterima");
-    }, 4_500);
-    return () => clearTimeout(t);
-  }, [tahap]);
+    if (tahap !== "menunggu" || !tagihan) return;
+    const t = setInterval(async () => {
+      const h = await kirim<Invoice>(
+        "GET",
+        `/api/langganan/tagihan/${tagihan.id}`,
+      );
+      if (!h.ok) return;
+      if (h.data.status === "lunas") return setTahap("diterima");
+      setGalat(
+        h.data.failureReason ?? "Pembayaran gagal. Coba cara bayar lain.",
+      );
+      setTahap("pilih");
+    }, SELANG_MS);
+    return () => clearInterval(t);
+  }, [tahap, tagihan]);
 
   /* Jeda singkat setelah "diterima" supaya warga sempat membacanya sebelum
      halamannya berganti. */
   useEffect(() => {
     if (tahap !== "diterima") return;
-    const t = setTimeout(() => router.push("/langganan"), 1_400);
+    const t = setTimeout(() => {
+      router.push("/langganan");
+      router.refresh();
+    }, 1_400);
     return () => clearTimeout(t);
   }, [tahap, router]);
 
@@ -125,117 +145,122 @@ export function FormBayar({ paket }: { paket: Plan }) {
       </Kartu>
 
       {tahap === "pilih" ? (
-      <section className="space-y-3">
-        <Label>Cara bayar</Label>
+        <section className="space-y-3">
+          <Label>Cara bayar</Label>
 
-        <ul className="space-y-2">
-          {METODE.map((m) => {
-            const ini = m.id === metode;
-            return (
-              <li key={m.id}>
-                <label
-                  className={`flex cursor-pointer items-start gap-3 rounded-kartu border bg-card p-3 ${
-                    ini ? "border-hijau" : "border-line hover:border-line-kuat"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="metode"
-                    value={m.id}
-                    checked={ini}
-                    onChange={() => setMetode(m.id)}
-                    className="mt-1 size-5 shrink-0 accent-hijau"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-semibold">
-                      {m.nama}
+          <ul className="space-y-2">
+            {METODE.map((m) => {
+              const ini = m.id === metode;
+              return (
+                <li key={m.id}>
+                  <label
+                    className={`flex cursor-pointer items-start gap-3 rounded-kartu border bg-card p-3 ${
+                      ini
+                        ? "border-hijau"
+                        : "border-line hover:border-line-kuat"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="metode"
+                      value={m.id}
+                      checked={ini}
+                      onChange={() => setMetode(m.id)}
+                      className="mt-1 size-5 shrink-0 accent-hijau"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] font-semibold">
+                        {m.nama}
+                      </span>
+                      <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
+                        {m.terbaca}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
-                      {m.terbaca}
-                    </span>
-                  </span>
-                </label>
+                  </label>
 
-                {/* Rincian cuma muncul untuk metode yang dipilih: tiga panel
+                  {/* Rincian cuma muncul untuk metode yang dipilih: tiga panel
                     terbuka sekaligus membuat halaman ini jadi daftar bacaan,
                     bukan pilihan. */}
-                {ini && (
-                  <div className="mt-2 rounded-kartu border border-line bg-paper p-3">
-                    {/* Kodenya baru terbit setelah pembayaran dibuat, jadi
+                  {ini && (
+                    <div className="mt-2 rounded-kartu border border-line bg-paper p-3">
+                      {/* Kodenya baru terbit setelah pembayaran dibuat, jadi
                         yang bisa dikatakan sekarang cuma apa yang akan
                         terjadi — bukan bingkai kosong menunggu gambar. */}
-                    {m.id === "qris" && (
-                      <p className="text-[13px] leading-snug text-ink-2">
-                        Kode QRIS muncul di layar ini setelah kamu menekan
-                        Bayar. Berlaku 15 menit sejak muncul.
-                      </p>
-                    )}
+                      {m.id === "qris" && (
+                        <p className="text-[13px] leading-snug text-ink-2">
+                          Kode QRIS muncul di layar ini setelah kamu menekan
+                          Bayar. Berlaku 15 menit sejak muncul.
+                        </p>
+                      )}
 
-                    {m.pilihan && (
-                      <>
-                        <div className="flex flex-wrap gap-1.5">
-                          {m.pilihan.map((nama) => {
-                            const terpilih = kanal[m.id] === nama;
-                            return (
-                              <button
-                                key={nama}
-                                type="button"
-                                aria-pressed={terpilih}
-                                onClick={() =>
-                                  setKanal((k) => ({ ...k, [m.id]: nama }))
-                                }
-                                className={`min-h-11 rounded-kartu border px-3 text-[14px] font-semibold ${
-                                  terpilih
-                                    ? "border-hijau bg-hijau text-white"
-                                    : "border-line-kuat bg-card text-ink hover:bg-paper"
-                                }`}
-                              >
-                                {nama}
-                              </button>
-                            );
-                          })}
-                        </div>
+                      {m.pilihan && (
+                        <>
+                          <div className="flex flex-wrap gap-1.5">
+                            {m.pilihan.map((nama) => {
+                              const terpilih = kanal[m.id] === nama;
+                              return (
+                                <button
+                                  key={nama}
+                                  type="button"
+                                  aria-pressed={terpilih}
+                                  onClick={() =>
+                                    setKanal((k) => ({ ...k, [m.id]: nama }))
+                                  }
+                                  className={`min-h-11 rounded-kartu border px-3 text-[14px] font-semibold ${
+                                    terpilih
+                                      ? "border-hijau bg-hijau text-white"
+                                      : "border-line-kuat bg-card text-ink hover:bg-paper"
+                                  }`}
+                                >
+                                  {nama}
+                                </button>
+                              );
+                            })}
+                          </div>
 
-                        {m.id === "va" && (
-                          <NomorVa
-                            bank={kanal.va}
-                            nomor={nomorVa}
-                            jumlah={paket.price}
-                            tersalin={tersalin}
-                            onSalin={salinVa}
-                          />
-                        )}
+                          {m.id === "va" && (
+                            <p className="mt-3 text-[13px] leading-snug text-ink-2">
+                              Nomor virtual account {kanal.va} muncul setelah
+                              kamu menekan Bayar.
+                            </p>
+                          )}
 
-                        {m.id === "ewallet" && (
-                          <p className="mt-3 text-[13px] leading-snug text-ink-2">
-                            Kamu akan dibawa ke aplikasi {kanal.ewallet} untuk
-                            menyetujui pembayaran, lalu kembali ke sini.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+                          {m.id === "ewallet" && (
+                            <p className="mt-3 text-[13px] leading-snug text-ink-2">
+                              Kamu akan dibawa ke aplikasi {kanal.ewallet} untuk
+                              menyetujui pembayaran, lalu kembali ke sini.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       ) : (
         <section className="space-y-3">
           <Label>{namaMetode}</Label>
           <Kartu className="space-y-3 p-4">
             {metode === "qris" && (
               <div className="flex flex-col items-center gap-2 text-center">
-                <div className="grid aspect-square w-44 place-items-center rounded-kartu border border-line-kuat bg-paper p-3">
+                {tagihan?.qrUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element -- gambar QR dari Midtrans, bukan aset kita */
+                  <img
+                    src={tagihan.qrUrl}
+                    alt={`Kode QRIS untuk ${rupiah(paket.price)}`}
+                    className="aspect-square w-52 rounded-kartu border border-line-kuat bg-white p-2"
+                  />
+                ) : (
                   <p className="text-[12px] leading-snug text-ink-3">
-                    Kode QRIS tampil di sini setelah penyedia pembayaran
-                    terpasang.
+                    Kode QRIS belum diterima dari penyedia pembayaran.
                   </p>
-                </div>
+                )}
                 <p className="max-w-[32ch] text-[13px] leading-snug text-ink-2">
-                  Pindai dari aplikasi bank atau e-wallet mana pun. Kode
-                  berlaku 15 menit.
+                  Pindai dari aplikasi bank atau e-wallet mana pun. Kode berlaku
+                  15 menit.
                 </p>
               </div>
             )}
@@ -243,7 +268,18 @@ export function FormBayar({ paket }: { paket: Plan }) {
             {metode === "ewallet" && (
               /* Benar-benar urutan langkah, jadi diberi nomor. */
               <ol className="space-y-2 text-[14px] leading-snug">
-                <Langkah n={1}>Buka aplikasi {kanal.ewallet}.</Langkah>
+                <Langkah n={1}>
+                  {tagihan?.deeplink ? (
+                    <a
+                      href={tagihan.deeplink}
+                      className="font-semibold underline"
+                    >
+                      Buka aplikasi {kanal.ewallet}
+                    </a>
+                  ) : (
+                    <>Buka aplikasi {kanal.ewallet}.</>
+                  )}
+                </Langkah>
                 <Langkah n={2}>
                   Setujui pembayaran {rupiah(paket.price)} ke Pilah Yuk.
                 </Langkah>
@@ -273,9 +309,14 @@ export function FormBayar({ paket }: { paket: Plan }) {
 
       <div className="fixed inset-x-0 bottom-0 border-t border-line bg-paper/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-[2px]">
         <div className="mx-auto max-w-screen-sm">
+          {galat && (
+            <p role="alert" className="mb-2 text-[13px] text-alarm">
+              {galat}
+            </p>
+          )}
           {tahap === "pilih" ? (
-            <Tombol lebar onClick={() => setTahap("menunggu")}>
-              Bayar {rupiah(paket.price)}
+            <Tombol lebar disabled={mengirim} onClick={bayar}>
+              {mengirim ? "Membuat tagihan…" : `Bayar ${rupiah(paket.price)}`}
             </Tombol>
           ) : (
             <div className="flex items-center gap-3">

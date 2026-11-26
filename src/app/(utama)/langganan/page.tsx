@@ -1,9 +1,10 @@
 import { LayarLangganan } from "@/components/langganan/layar-langganan";
-import { SUBSCRIPTION } from "@/lib/mock";
+import { daftarPaket, langgananku } from "@/lib/data";
 
 export const metadata = { title: "Langganan — Pilah Yuk" };
 
-export default function LanggananPage() {
+export default async function LanggananPage() {
+  const [langganan, paket] = await Promise.all([langgananku(), daftarPaket()]);
   return (
     <main className="space-y-6">
       <header>
@@ -13,7 +14,7 @@ export default function LanggananPage() {
         </p>
       </header>
 
-      <LayarLangganan awal={SUBSCRIPTION} />
+      <LayarLangganan langganan={langganan} paket={paket} />
     </main>
   );
 }

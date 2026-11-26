@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { satuanSiklus } from "@/lib/kalimat";
 import { useNilaiKlien } from "@/lib/klien";
-import { TAGIHAN } from "@/lib/mock";
 import { parseISO, rupiah, tanggalPendek } from "@/lib/tanggal";
-import { useLangganan } from "@/lib/toko-langganan";
+import type { Invoice, Subscription } from "@/lib/types";
 import { Kartu, Label, Perforasi } from "../primitif";
 import { DaftarTagihan } from "./daftar-tagihan";
 import { TombolLink } from "../tombol";
@@ -17,8 +16,13 @@ function sisaHari(iso: string) {
   return Math.round((a - b) / 86_400_000);
 }
 
-export function StatusLangganan() {
-  const langganan = useLangganan();
+export function StatusLangganan({
+  langganan,
+  tagihan: TAGIHAN,
+}: {
+  langganan: Subscription;
+  tagihan: Invoice[];
+}) {
   const sisa = useNilaiKlien(() => sisaHari(langganan.endDate), null);
 
   const aktif = langganan.status === "aktif";

@@ -2,20 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import {
-  hargaPerJemput,
-  iramaJemput,
-  satuanSiklus,
-} from "@/lib/kalimat";
+import { hargaPerJemput, iramaJemput, satuanSiklus } from "@/lib/kalimat";
 import { useNilaiKlien } from "@/lib/klien";
-import { PAKET, paketTerpakai } from "@/lib/mock";
 import { parseISO, rupiah, tanggalPendek } from "@/lib/tanggal";
-import {
-  pilihPaket,
-  setelPerpanjangOtomatis,
-  useLangganan,
-} from "@/lib/toko-langganan";
-import type { Subscription } from "@/lib/types";
+import { setelPerpanjangOtomatis } from "@/lib/toko-langganan";
+import type { Plan, Subscription } from "@/lib/types";
 import { Lembar } from "../lembar";
 import { Kartu, Label, Perforasi } from "../primitif";
 import { Sakelar } from "../sakelar";
@@ -28,134 +19,157 @@ function sisaHari(iso: string) {
   return Math.round((a - b) / 86_400_000);
 }
 
-export function LayarLangganan({ awal }: { awal: Subscription }) {
-  /* Dibaca dari store sesi, bukan useState: ganti paket melewati halaman
-     pembayaran, dan keadaannya harus selamat dari perpindahan halaman. */
-  const langganan = useLangganan();
+export function LayarLangganan({
+  langganan,
+  paket: PAKET,
+}: {
+  /** `null` = belum pernah berlangganan: yang tampil cuma pilihan paket. */
+  langganan: Subscription | null;
+  paket: Plan[];
+}) {
+  const terpakai = PAKET.find((p) => p.id === langganan?.planId);
   const [pilihan, setPilihan] = useState(
-    () => paketTerpakai(awal)?.id ?? PAKET.find((p) => p.isActive)!.id,
+    () => terpakai?.id ?? PAKET.find((p) => p.isActive)?.id ?? "",
   );
   const [lembarBuka, setLembarBuka] = useState(false);
+  const [otomatis, setOtomatis] = useState(langganan?.autoRenew ?? false);
+  const [galat, setGalat] = useState<string | null>(null);
 
-  const terpakai = paketTerpakai(langganan);
-  const dipilih = PAKET.find((p) => p.id === pilihan)!;
-  const gantiPaket = terpakai?.id !== dipilih.id;
+  const dipilih = PAKET.find((p) => p.id === pilihan);
+  const gantiPaket = !!dipilih && terpakai?.id !== dipilih.id;
 
-  const sisaKuota = Math.max(0, langganan.pickupQuota - langganan.pickupUsed);
-  const sisa = useNilaiKlien(() => sisaHari(langganan.endDate), null);
+  const sisaKuota = langganan
+    ? Math.max(0, langganan.pickupQuota - langganan.pickupUsed)
+    : 0;
+  const sisa = useNilaiKlien(
+    () => (langganan ? sisaHari(langganan.endDate) : null),
+    null,
+  );
 
-  const belumBayar = langganan.status === "menunggu_bayar";
-  const habis = langganan.status === "kedaluwarsa";
+  const belumBayar = langganan?.status === "menunggu_bayar";
+  const habis = langganan?.status === "kedaluwarsa";
+
+  async function ubahOtomatis(nyala: boolean) {
+    setOtomatis(nyala);
+    const h = await setelPerpanjangOtomatis(nyala);
+    setGalat(h.ok ? null : h.pesan);
+    if (!h.ok) setOtomatis(!nyala);
+  }
 
   /* Diperlakukan sebagai pembayaran yang selesai. Di layar sungguhan ini
      tempat halaman pembayaran mengambil alih. */
   /* Paket dicatat dulu sebagai "menunggu bayar", baru pindah ke halaman
      pembayaran. Warga yang mundur di tengah jalan tetap menemukan pilihannya,
      bukan kembali ke paket lama tanpa penjelasan. */
-  const tautanBayar = `/langganan/bayar?paket=${dipilih.id}`;
+  const tautanBayar = `/langganan/bayar?paket=${dipilih?.id}`;
 
   return (
     <div className="space-y-7">
       {/* Struk langganan: separuh atas menjawab "berapa jemput lagi punya
           saya", separuh bawah "apa yang saya bayar dan sampai kapan". */}
-      <Kartu className="overflow-hidden">
-        <div className="flex items-start justify-between gap-3 p-4 pb-3">
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-ink-2">Sisa jemput</p>
-            <p className="angka mt-1 text-[44px] font-extrabold leading-[1]">
-              {sisaKuota}
-            </p>
-            <p className="text-[14px] text-ink-2">
-              dari {langganan.pickupQuota} jemput paket ini
-            </p>
-          </div>
-          <span
-            className={`shrink-0 rounded-kartu border px-2.5 py-1 text-[12px] font-semibold ${
-              belumBayar || habis
-                ? "border-alarm/45 bg-alarm-tipis text-alarm"
-                : "border-line bg-paper text-ink-2"
-            }`}
-          >
-            {belumBayar ? "Belum dibayar" : habis ? "Habis" : "Aktif"}
-          </span>
-        </div>
-
-        <div className="px-4 pb-3">
-          <div className="flex gap-1" aria-hidden>
-            {Array.from({ length: langganan.pickupQuota }, (_, i) => (
-              <span
-                key={i}
-                className={`h-2 flex-1 rounded-full ${
-                  i < langganan.pickupUsed ? "bg-hijau" : "bg-line"
-                }`}
-              />
-            ))}
-          </div>
-          <p className="mt-1.5 text-[12px] text-ink-2">
-            {langganan.pickupUsed} dari {langganan.pickupQuota} jemput terpakai
-          </p>
-        </div>
-
-        <div className="py-1">
-          <Perforasi />
-        </div>
-
-        <div className="space-y-3 p-4 pt-3">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[15px] font-semibold leading-snug">
-              {langganan.planName}
-            </p>
-            <p className="angka shrink-0 text-[17px] font-bold">
-              {rupiah(langganan.price)}
-              <span className="text-[13px] font-semibold text-ink-2">
-                /{satuanSiklus(langganan.billingCycle)}
-              </span>
-            </p>
-          </div>
-
-          <p className="text-[13px] leading-snug text-ink-2">
-            {belumBayar
-              ? `Selesaikan pembayaran ${rupiah(langganan.price)} supaya jemput bisa dijadwalkan lagi.`
-              : habis
-                ? "Petugas berhenti menjemput sampai paket diperpanjang."
-                : sisa !== null && sisa <= 0
-                  ? `Berakhir hari ini, ${tanggalPendek(langganan.endDate)}.`
-                  : sisa !== null
-                    ? `Berlaku sampai ${tanggalPendek(langganan.endDate)} — ${sisa} hari lagi.`
-                    : `Berlaku sampai ${tanggalPendek(langganan.endDate)}.`}
-          </p>
-
-          <p className="text-[13px] text-ink-3">
-            Aktif sejak {tanggalPendek(langganan.startDate)}
-          </p>
-
-          <Link
-            href="/langganan/status"
-            className="inline-block text-[13px] font-semibold text-hijau"
-          >
-            Lihat status &amp; riwayat tagihan
-          </Link>
-
-          {terpakai && (
-            <TombolLink
-              lebar
-              /* Perpanjang = paket yang sama, jadi `pilihPaket` tidak dipanggil:
-                 statusnya tetap aktif, dan sisa harinya ikut terbawa. */
-              href={`/langganan/bayar?paket=${terpakai.id}`}
-              varian={belumBayar || habis ? "utama" : "garis"}
+      {langganan && (
+        <Kartu className="overflow-hidden">
+          <div className="flex items-start justify-between gap-3 p-4 pb-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-ink-2">
+                Sisa jemput
+              </p>
+              <p className="angka mt-1 text-[44px] font-extrabold leading-[1]">
+                {sisaKuota}
+              </p>
+              <p className="text-[14px] text-ink-2">
+                dari {langganan.pickupQuota} jemput paket ini
+              </p>
+            </div>
+            <span
+              className={`shrink-0 rounded-kartu border px-2.5 py-1 text-[12px] font-semibold ${
+                belumBayar || habis
+                  ? "border-alarm/45 bg-alarm-tipis text-alarm"
+                  : "border-line bg-paper text-ink-2"
+              }`}
             >
+              {belumBayar ? "Belum dibayar" : habis ? "Habis" : "Aktif"}
+            </span>
+          </div>
+
+          <div className="px-4 pb-3">
+            <div className="flex gap-1" aria-hidden>
+              {Array.from({ length: langganan.pickupQuota }, (_, i) => (
+                <span
+                  key={i}
+                  className={`h-2 flex-1 rounded-full ${
+                    i < langganan.pickupUsed ? "bg-hijau" : "bg-line"
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="mt-1.5 text-[12px] text-ink-2">
+              {langganan.pickupUsed} dari {langganan.pickupQuota} jemput
+              terpakai
+            </p>
+          </div>
+
+          <div className="py-1">
+            <Perforasi />
+          </div>
+
+          <div className="space-y-3 p-4 pt-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[15px] font-semibold leading-snug">
+                {langganan.planName}
+              </p>
+              <p className="angka shrink-0 text-[17px] font-bold">
+                {rupiah(langganan.price)}
+                <span className="text-[13px] font-semibold text-ink-2">
+                  /{satuanSiklus(langganan.billingCycle)}
+                </span>
+              </p>
+            </div>
+
+            <p className="text-[13px] leading-snug text-ink-2">
               {belumBayar
-                ? `Bayar ${rupiah(langganan.price)}`
+                ? `Selesaikan pembayaran ${rupiah(langganan.price)} supaya jemput bisa dijadwalkan lagi.`
                 : habis
-                  ? "Perpanjang langganan"
-                  : `Perpanjang sekarang, ${rupiah(langganan.price)}`}
-            </TombolLink>
-          )}
-        </div>
-      </Kartu>
+                  ? "Petugas berhenti menjemput sampai paket diperpanjang."
+                  : sisa !== null && sisa <= 0
+                    ? `Berakhir hari ini, ${tanggalPendek(langganan.endDate)}.`
+                    : sisa !== null
+                      ? `Berlaku sampai ${tanggalPendek(langganan.endDate)} — ${sisa} hari lagi.`
+                      : `Berlaku sampai ${tanggalPendek(langganan.endDate)}.`}
+            </p>
+
+            <p className="text-[13px] text-ink-3">
+              Aktif sejak {tanggalPendek(langganan.startDate)}
+            </p>
+
+            <Link
+              href="/langganan/status"
+              className="inline-block text-[13px] font-semibold text-hijau"
+            >
+              Lihat status &amp; riwayat tagihan
+            </Link>
+
+            {terpakai && (
+              <TombolLink
+                lebar
+                /* Perpanjang = paket yang sama, jadi `pilihPaket` tidak dipanggil:
+                 statusnya tetap aktif, dan sisa harinya ikut terbawa. */
+                href={`/langganan/bayar?paket=${terpakai.id}`}
+                varian={belumBayar || habis ? "utama" : "garis"}
+              >
+                {belumBayar
+                  ? `Bayar ${rupiah(langganan.price)}`
+                  : habis
+                    ? "Perpanjang langganan"
+                    : `Perpanjang sekarang, ${rupiah(langganan.price)}`}
+              </TombolLink>
+            )}
+          </div>
+        </Kartu>
+      )}
 
       <section className="space-y-3">
-        <Label>Pilih paket</Label>
+        <Label>{langganan ? "Pilih paket" : "Pilih paket langganan"}</Label>
 
         <ul className="space-y-2">
           {PAKET.map((paket) => {
@@ -241,68 +255,78 @@ export function LayarLangganan({ awal }: { awal: Subscription }) {
           })}
         </ul>
 
-        {gantiPaket && (
+        {dipilih && (gantiPaket || !langganan) && (
           <Tombol
             lebar
             onClick={() => setLembarBuka(true)}
             className="min-h-14 text-[16px]"
           >
-            Ganti ke {dipilih.name}
+            {langganan
+              ? `Ganti ke ${dipilih.name}`
+              : `Langganan ${dipilih.name}`}
           </Tombol>
         )}
       </section>
 
-      <section className="space-y-3">
-        <Label>Pengaturan</Label>
-        <Sakelar
-          nyala={langganan.autoRenew}
-          onUbah={setelPerpanjangOtomatis}
-          judul="Perpanjang otomatis"
-          keterangan={`Ditagih ${rupiah(langganan.price)} tiap ${satuanSiklus(langganan.billingCycle)}, mulai ${tanggalPendek(langganan.endDate)}.`}
-          matikanKeterangan="Jemput berhenti saat paket habis, sampai kamu perpanjang sendiri."
-        />
-      </section>
-
-      <Lembar
-        buka={lembarBuka}
-        onTutup={() => setLembarBuka(false)}
-        judul={gantiPaket ? "Ganti paket" : "Perpanjang paket"}
-      >
-        <div className="space-y-4">
-          <Kartu className="divide-y divide-line">
-            <Baris kiri="Paket" kanan={dipilih.name} />
-            <Baris kiri="Kuota jemput" kanan={iramaJemput(dipilih)} />
-            <Baris
-              kiri="Ditagih"
-              kanan={`${rupiah(dipilih.price)} / ${satuanSiklus(dipilih.billingCycle)}`}
-              tebal
-            />
-          </Kartu>
-
-          <div className="space-y-2 text-[13px] leading-snug text-ink-2">
-            <p>
-              Pembayaran lewat QRIS, e-wallet, atau transfer bank. Kuota paket
-              baru masuk begitu pembayaran terbaca — biasanya di bawah satu
-              menit.
+      {langganan && (
+        <section className="space-y-3">
+          <Label>Pengaturan</Label>
+          <Sakelar
+            nyala={otomatis}
+            onUbah={ubahOtomatis}
+            judul="Perpanjang otomatis"
+            keterangan={`Ditagih ${rupiah(langganan.price)} tiap ${satuanSiklus(langganan.billingCycle)}, mulai ${tanggalPendek(langganan.endDate)}.`}
+            matikanKeterangan="Jemput berhenti saat paket habis, sampai kamu perpanjang sendiri."
+          />
+          {galat && (
+            <p role="alert" className="text-[13px] text-alarm">
+              {galat}
             </p>
-            {gantiPaket && langganan.status === "aktif" && sisaKuota > 0 && (
-              <p>
-                Paket baru langsung menggantikan yang sekarang, jadi {sisaKuota}{" "}
-                jemput yang belum terpakai tidak ikut terbawa.
-              </p>
-            )}
-          </div>
+          )}
+        </section>
+      )}
 
-          <TombolLink
-            lebar
-            href={tautanBayar}
-            onClick={() => pilihPaket(dipilih.id)}
-            className="min-h-14 text-[16px]"
-          >
-            Lanjut ke pembayaran
-          </TombolLink>
-        </div>
-      </Lembar>
+      {dipilih && (
+        <Lembar
+          buka={lembarBuka}
+          onTutup={() => setLembarBuka(false)}
+          judul={gantiPaket ? "Ganti paket" : "Perpanjang paket"}
+        >
+          <div className="space-y-4">
+            <Kartu className="divide-y divide-line">
+              <Baris kiri="Paket" kanan={dipilih.name} />
+              <Baris kiri="Kuota jemput" kanan={iramaJemput(dipilih)} />
+              <Baris
+                kiri="Ditagih"
+                kanan={`${rupiah(dipilih.price)} / ${satuanSiklus(dipilih.billingCycle)}`}
+                tebal
+              />
+            </Kartu>
+
+            <div className="space-y-2 text-[13px] leading-snug text-ink-2">
+              <p>
+                Pembayaran lewat QRIS, e-wallet, atau transfer bank. Kuota paket
+                baru masuk begitu pembayaran terbaca — biasanya di bawah satu
+                menit.
+              </p>
+              {gantiPaket && langganan?.status === "aktif" && sisaKuota > 0 && (
+                <p>
+                  Paket baru langsung menggantikan yang sekarang, jadi{" "}
+                  {sisaKuota} jemput yang belum terpakai tidak ikut terbawa.
+                </p>
+              )}
+            </div>
+
+            <TombolLink
+              lebar
+              href={tautanBayar}
+              className="min-h-14 text-[16px]"
+            >
+              Lanjut ke pembayaran
+            </TombolLink>
+          </div>
+        </Lembar>
+      )}
     </div>
   );
 }

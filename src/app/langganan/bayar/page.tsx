@@ -3,7 +3,7 @@ import { FormBayar } from "@/components/langganan/form-bayar";
 import { Kop } from "@/components/kop";
 import { Kartu } from "@/components/primitif";
 import { TombolLink } from "@/components/tombol";
-import { PAKET } from "@/lib/mock";
+import { daftarPaket } from "@/lib/data";
 
 export const metadata = { title: "Pembayaran — Pilah Yuk" };
 
@@ -39,7 +39,7 @@ async function Isi({
   cari: PageProps<"/langganan/bayar">["searchParams"];
 }) {
   const { paket: id } = await cari;
-  const paket = PAKET.find((p) => p.id === id && p.isActive);
+  const paket = (await daftarPaket()).find((p) => p.id === id && p.isActive);
 
   if (!paket) {
     return (
