@@ -1,24 +1,16 @@
-"use client";
-
 import Link from "next/link";
-import { SEMUA_PICKUP } from "@/lib/mock";
+import type { umpanBalik } from "@/lib/data";
 import { tanggalPendek } from "@/lib/tanggal";
-import { useUlasan } from "@/lib/toko-ulasan";
 import { Kartu, Label } from "../primitif";
 import { RingkasUlasan } from "./ulasan-pickup";
 
-const pickupById = (id: string) => SEMUA_PICKUP.find((p) => p.id === id);
-
-export function DaftarUlasan() {
-  const ulasan = useUlasan();
-  const sudah = new Set(ulasan.map((u) => u.pickupId));
-  /* Yang paling baru selesai paling atas — ingatannya masih segar. */
-  const menunggu = SEMUA_PICKUP.filter(
-    (p) => p.status === "selesai" && !sudah.has(p.id),
-  ).sort((a, b) => b.pickupDate.localeCompare(a.pickupDate));
-  const terkirim = [...ulasan].sort((a, b) =>
-    b.dikirim.localeCompare(a.dikirim),
-  );
+export function DaftarUlasan({
+  menunggu: daftarMenunggu,
+  terkirim,
+}: Awaited<ReturnType<typeof umpanBalik>>) {
+  /* Yang paling baru selesai paling atas — ingatannya masih segar. API
+     sudah mengurutkannya; `id` disamakan dengan bentuk pesanan lain. */
+  const menunggu = daftarMenunggu.map((p) => ({ ...p, id: p.pickupId }));
 
   return (
     <main className="space-y-7 px-4 pb-10 pt-5">
@@ -68,15 +60,13 @@ export function DaftarUlasan() {
         ) : (
           <ul className="space-y-2">
             {terkirim.map((u) => {
-              const p = pickupById(u.pickupId);
               return (
                 <Kartu as="li" key={u.pickupId} className="p-4">
                   <Link
                     href={`/riwayat/${u.pickupId}`}
                     className="mb-2 block text-[13px] text-ink-2 hover:text-ink"
                   >
-                    {p?.officerName ?? "Petugas"} ·{" "}
-                    {p ? tanggalPendek(p.pickupDate) : u.pickupId}
+                    {u.officerName ?? "Petugas"} · {tanggalPendek(u.pickupDate)}
                   </Link>
                   <RingkasUlasan u={u} />
                 </Kartu>

@@ -9,7 +9,7 @@ import { KartuPetugas } from "@/components/riwayat/kartu-petugas";
 import { RincianSampah } from "@/components/riwayat/rincian-sampah";
 import { StatusJemput } from "@/components/status-jemput";
 import { UlasanPickup } from "@/components/umpan-balik/ulasan-pickup";
-import { addressById, slotById, SEMUA_PICKUP } from "@/lib/mock";
+import { satuPesanan, ulasanUntuk } from "@/lib/data";
 import { hariPanjang, tanggalPanjang, tanggalPendek } from "@/lib/tanggal";
 
 export default function DetailPengangkutanPage(
@@ -46,11 +46,11 @@ async function Isi({
   params: PageProps<"/riwayat/[id]">["params"];
 }) {
   const { id } = await params;
-  const pickup = SEMUA_PICKUP.find((p) => p.id === id);
+  const pickup = await satuPesanan(id);
   if (!pickup) notFound();
 
-  const alamat = addressById(pickup.addressId);
-  const slot = slotById(pickup.timeSlotId);
+  const alamat = pickup.address;
+  const slot = pickup.slot;
   const batal = pickup.status === "batal";
   const selesai = pickup.status === "selesai";
 
@@ -140,14 +140,7 @@ async function Isi({
           <KartuPetugas
             nama={pickup.officerName}
             channel={alamat?.rwChannelName}
-            jumlahAngkut={
-              SEMUA_PICKUP.filter(
-                (p) =>
-                  p.officerName === pickup.officerName &&
-                  p.addressId === pickup.addressId &&
-                  p.status === "selesai",
-              ).length
-            }
+            jumlahAngkut={pickup.petugasJumlahAngkut}
           />
         </section>
       )}
@@ -187,7 +180,9 @@ async function Isi({
         </section>
       )}
 
-      {selesai && <UlasanPickup pickupId={pickup.id} />}
+      {selesai && (
+        <UlasanPickup pickupId={pickup.id} u={await ulasanUntuk(pickup.id)} />
+      )}
     </main>
   );
 }

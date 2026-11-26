@@ -1,4 +1,3 @@
-import { addressById, slotById } from "@/lib/mock";
 import { tanggalPanjang } from "@/lib/tanggal";
 import type { Pickup } from "@/lib/types";
 import { AksiBerkas } from "../aksi-berkas";
@@ -11,8 +10,8 @@ const kg = (n: number) =>
 
 /** Tanda terima sebagai teks biasa — bisa dibaca di mana saja, termasuk WA. */
 function teksBukti(pickup: Pickup, namaKategori: string[]) {
-  const alamat = addressById(pickup.addressId);
-  const slot = slotById(pickup.timeSlotId);
+  const alamat = pickup.address;
+  const slot = pickup.slot;
   return [
     "TANDA TERIMA PENGANGKUTAN SAMPAH",
     "Pilah Yuk",

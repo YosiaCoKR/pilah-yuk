@@ -1,9 +1,11 @@
 import { Kop } from "@/components/kop";
 import { DaftarUlasan } from "@/components/umpan-balik/daftar-ulasan";
+import { umpanBalik } from "@/lib/data";
 
 export const metadata = { title: "Penilaianku — Pilah Yuk" };
 
-export default function DaftarUlasanPage() {
+export default async function DaftarUlasanPage() {
+  const data = await umpanBalik();
   return (
     <>
       <Kop
@@ -11,7 +13,7 @@ export default function DaftarUlasanPage() {
         keterangan="Umpan balik untuk petugas"
         kembali="/profil"
       />
-      <DaftarUlasan />
+      <DaftarUlasan {...data} />
     </>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { hariIniISO } from "@/lib/tanggal";
-import { simpanUlasan, useUlasan } from "@/lib/toko-ulasan";
+import { kirimUlasan } from "@/lib/toko-ulasan";
 import type { Ulasan } from "@/lib/types";
 import { IkonBintang, IkonCentang } from "../ikon";
 import { Isian, Kartu, Label } from "../primitif";
@@ -27,9 +27,12 @@ const KELUHAN = [
 export function FormUmpanBalik({
   pickupId,
   petugas,
+  sudahAda,
 }: {
   pickupId: string;
   petugas: string;
+  /** Sudah dinilai sebelumnya (di tab lain, atau lewat tombol kembali). */
+  sudahAda: Ulasan | null;
 }) {
   const [nilai, setNilai] = useState(0);
   const [tanda, setTanda] = useState<string[]>([]);
@@ -45,8 +48,7 @@ export function FormUmpanBalik({
     setNilai(n);
   }
 
-  /* Sudah dinilai sebelumnya (di tab lain, atau lewat tombol kembali). */
-  const sudahAda = useUlasan().find((x) => x.pickupId === pickupId);
+  const [galat, setGalat] = useState<string | null>(null);
   /* Ref, bukan state: ketukan kedua bisa datang sebelum React sempat
      merender ulang, dan saat itu state `kirim` masih false. */
   const terkunci = useRef(false);
@@ -61,9 +63,12 @@ export function FormUmpanBalik({
       catatan: catatan.trim(),
       dikirim: hariIniISO(),
     };
-    mulaiKirim(() => {
-      /* Ditolak toko → `sudahAda` terisi dan layar "sudah dinilai" muncul. */
-      if (simpanUlasan(u)) setTerkirim(u);
+    mulaiKirim(async () => {
+      const h = await kirimUlasan(u);
+      /* 409 = sudah pernah dinilai: tetap tampilkan layar "terkirim". */
+      if (h.ok || h.status === 409) return setTerkirim(u);
+      terkunci.current = false;
+      setGalat(h.pesan);
     });
   }
 
@@ -184,6 +189,11 @@ export function FormUmpanBalik({
 
       <div className="fixed inset-x-0 bottom-0 border-t border-line bg-paper/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         <div className="mx-auto max-w-screen-sm">
+          {galat && (
+            <p role="alert" className="mb-2 text-[13px] text-alarm">
+              {galat}
+            </p>
+          )}
           <Tombol lebar disabled={!nilai || kirim} onClick={simpan}>
             {kirim ? "Mengirim…" : "Kirim penilaian"}
           </Tombol>

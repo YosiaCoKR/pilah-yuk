@@ -1,6 +1,5 @@
 "use client";
 
-import { useUlasan } from "@/lib/toko-ulasan";
 import type { Ulasan } from "@/lib/types";
 import { IkonBintang } from "../ikon";
 import { Kartu } from "../primitif";
@@ -56,8 +55,14 @@ export function RingkasUlasan({ u }: { u: Ulasan }) {
  * Di detail riwayat: penilaian yang sudah dikirim, atau ajakan menilai.
  * Sengaja tidak menawarkan "nilai lagi" — satu penjemputan, satu penilaian.
  */
-export function UlasanPickup({ pickupId }: { pickupId: string }) {
-  const u = useUlasan().find((x) => x.pickupId === pickupId);
+export function UlasanPickup({
+  pickupId,
+  u,
+}: {
+  pickupId: string;
+  /** Penilaian yang sudah dikirim, kalau ada. */
+  u: Ulasan | null;
+}) {
   if (!u) {
     return (
       <TombolLink href={`/umpan-balik/${pickupId}`} varian="garis" lebar>

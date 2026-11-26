@@ -1,9 +1,10 @@
 import { DaftarRiwayat } from "@/components/riwayat/daftar-riwayat";
-import { SEMUA_PICKUP } from "@/lib/mock";
+import { riwayat } from "@/lib/data";
 
 export const metadata = { title: "Riwayat — Pilah Yuk" };
 
-export default function RiwayatPage() {
+export default async function RiwayatPage() {
+  const pickups = await riwayat();
   return (
     <main className="space-y-6">
       <header>
@@ -13,7 +14,7 @@ export default function RiwayatPage() {
         </p>
       </header>
 
-      <DaftarRiwayat pickups={SEMUA_PICKUP} />
+      <DaftarRiwayat pickups={pickups} />
     </main>
   );
 }

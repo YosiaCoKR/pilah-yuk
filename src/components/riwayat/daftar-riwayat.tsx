@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { addressById, categoryByKey, slotById } from "@/lib/mock";
-import { bulanPendekDari, bulanTahun, hariPendek, parseISO } from "@/lib/tanggal";
+import { categoryByKey } from "@/lib/mock";
+import {
+  bulanPendekDari,
+  bulanTahun,
+  hariPendek,
+  parseISO,
+} from "@/lib/tanggal";
 import { StatusJemput } from "../status-jemput";
 import type { Pickup } from "@/lib/types";
 import { IkonCari, IkonLanjut, IkonTutup } from "../ikon";
@@ -18,7 +23,10 @@ const SARINGAN: { id: Saring; label: string }[] = [
 ];
 
 const kg = (n: number) =>
-  n.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  n.toLocaleString("id-ID", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
 
 export function DaftarRiwayat({ pickups }: { pickups: Pickup[] }) {
   const [saring, setSaring] = useState<Saring>("semua");
@@ -45,7 +53,7 @@ export function DaftarRiwayat({ pickups }: { pickups: Pickup[] }) {
     /* Dicari lewat kode, alamat, petugas, catatan, dan jenis sampah — semua
        yang mungkin diingat warga saat mencari satu pengangkutan tertentu. */
     return perStatus.filter((p) => {
-      const alamat = addressById(p.addressId);
+      const alamat = p.address;
       return [
         p.code,
         alamat?.label,
@@ -78,9 +86,7 @@ export function DaftarRiwayat({ pickups }: { pickups: Pickup[] }) {
   return (
     <div className="space-y-5">
       <div className="relative">
-        <IkonCari
-          className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-ink-3"
-        />
+        <IkonCari className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-ink-3" />
         <input
           type="search"
           value={cari}
@@ -138,9 +144,7 @@ export function DaftarRiwayat({ pickups }: { pickups: Pickup[] }) {
         <Kartu className="p-6 text-center">
           {cari.trim() ? (
             <>
-              <p className="text-[15px] font-semibold">
-                Tidak ada yang cocok
-              </p>
+              <p className="text-[15px] font-semibold">Tidak ada yang cocok</p>
               <p className="mt-1 text-[13px] leading-snug text-ink-2">
                 Tidak ada riwayat yang cocok dengan “{cari.trim()}”. Coba kata
                 lain, atau hapus pencarian untuk melihat semuanya.
@@ -200,8 +204,8 @@ export function DaftarRiwayat({ pickups }: { pickups: Pickup[] }) {
 }
 
 function BarisRiwayat({ pickup }: { pickup: Pickup }) {
-  const alamat = addressById(pickup.addressId);
-  const slot = slotById(pickup.timeSlotId);
+  const alamat = pickup.address;
+  const slot = pickup.slot;
   const d = parseISO(pickup.pickupDate);
   const batal = pickup.status === "batal";
 
